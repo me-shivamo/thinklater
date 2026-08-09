@@ -252,6 +252,20 @@ def _normalise(raw: dict, instruction: str) -> Plan:
             if str(args.get("position") or "").lower() not in ("after", "before"):
                 args["position"] = "after"
 
+    # The planner is told that `insert` carries its own anchor, but it still
+    # sometimes reads "after she says her credit card number" as a region to cut
+    # and bolts on find+trim. Left in, that silently hands back a truncated file
+    # when the user only asked to add a word — so unless they actually asked for
+    # a cut, an insert plan does not get to trim.
+    if "insert" in names and ("find" in names or "trim" in names):
+        wants_cut = any(word in instruction.lower() for word in
+                        ("trim", "cut", "clip", "crop", "extract", "snip",
+                         "shorten", "keep only", "just the", "only the"))
+        if not wants_cut:
+            log.info("dropping find/trim: instruction asks to insert, not to cut")
+            ops = [o for o in ops if o["op"] not in ("find", "trim")]
+            names = [o["op"] for o in ops]
+
     if "trim" in names and "find" not in names:
         ops = [o for o in ops if o["op"] != "trim"]
         names = [o["op"] for o in ops]
