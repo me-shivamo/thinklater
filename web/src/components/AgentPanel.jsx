@@ -4,10 +4,13 @@ import { useMemo, useState } from 'react'
 // version so new engine ops (denoise, resize, music, thumbnail, …) show up
 // automatically with zero frontend changes.
 const STAGE_LABELS = {
-  transcribe: 'Transcribe',
   plan: 'Plan',
+  ingest: 'Fetch media',
+  transcribe: 'Transcribe',
   find: 'Find',
+  insert: 'Insert speech',
   trim: 'Trim',
+  concat: 'Join clips',
   denoise: 'Denoise',
   dub: 'Dub',
   music: 'Add music',

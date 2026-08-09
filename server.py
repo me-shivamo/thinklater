@@ -101,6 +101,7 @@ STAGE_PCT: dict[str, int] = {
     "ingest": 20,
     "denoise": 30,
     "transcribe": 45,
+    "insert": 52,      # hoisted ahead of find, so it lands between the two
     "find": 60,
     "trim": 72,
     "concat": 80,
