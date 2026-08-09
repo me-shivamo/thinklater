@@ -1,0 +1,8 @@
+sarvamai>=0.1.30
+python-telegram-bot[job-queue]>=22.8
+yt-dlp>=2026.7.4
+requests>=2.32
+python-dotenv>=1.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
