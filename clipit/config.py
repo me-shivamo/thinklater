@@ -74,6 +74,11 @@ TELEGRAM_MAX_UPLOAD = 50 * 1024 * 1024
 DUB_POLL_SECONDS = 3.0
 DUB_TIMEOUT_SECONDS = 600.0
 
+# "auto"   -> Sarvam Dub (voice cloning, ~2-5 min server-side job), TTS on failure
+# "manual" -> Translate + Bulbul TTS locally (~20s, no voice cloning)
+# "sarvam" -> Sarvam Dub only, fail loudly
+DUB_ENGINE = os.getenv("CLIPIT_DUB_ENGINE", "auto")
+
 ATEMPO_MAX = 1.6              # beyond this the manual dub sounds like a chipmunk
 DEFAULT_PADDING = 0.4
 

@@ -122,7 +122,7 @@ async def _run_pipeline(source, instruction: str, queue: asyncio.Queue) -> None:
 
     def worker() -> None:
         try:
-            for event in run(source, instruction):
+            for event in run(source, instruction, dub_engine=config.DUB_ENGINE):
                 loop.call_soon_threadsafe(queue.put_nowait, event)
         except Exception as exc:  # noqa: BLE001
             log.exception("pipeline thread crashed")
