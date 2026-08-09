@@ -49,6 +49,7 @@ EXAMPLES = [
     "Trim the part where they talk about India",
     "Dub this in Hindi",
     "Remove the background noise",
+    'After he says Amazon, insert the word "Sarvam"',
 ]
 
 WELCOME = (
@@ -58,9 +59,11 @@ WELCOME = (
     "<b>Try:</b>\n"
     "• <code>https://youtu.be/… trim the part where he talks about India</code>\n"
     "• <code>dub this in Hindi</code> (with a file attached)\n"
-    "• <code>remove background noise from this</code>\n\n"
-    "I can find, trim, denoise and dub — and I'll tell you <i>why</i> I picked "
-    "a segment.\n\n"
+    "• <code>remove background noise from this</code>\n"
+    "• <code>after he says Amazon, insert the word \"Sarvam\"</code>\n\n"
+    "I can find, trim, denoise, dub — and <b>add words that were never spoken</b>, "
+    "spliced in next to whatever you anchor them to. I'll tell you <i>why</i> I "
+    "picked a spot.\n\n"
     f"<b>Dubbing languages:</b> "
     f"{', '.join(sorted(config.language_label(c) for c in config.DUB_LANGUAGES))}"
 )
@@ -212,6 +215,11 @@ async def _process(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         return
 
     caption_bits = []
+    for point in result.points:
+        anchor = f" after “{html.escape(point.anchor)}”" if point.anchor else ""
+        caption_bits.append(f"➕ Added at {point.time:.1f}s{anchor}")
+        if point.reason:
+            caption_bits.append(f"<i>{html.escape(point.reason)}</i>")
     if result.clips:
         clip = result.clips[0]
         caption_bits.append(f"✂️ {clip.start:.1f}s – {clip.end:.1f}s")

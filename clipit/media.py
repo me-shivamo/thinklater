@@ -439,27 +439,63 @@ def splice(path: Path, at: float, clip: Path, dest: Path, *, is_video: bool) -> 
     """
     total = duration_of(path)
     at = max(0.0, min(at, total))
-    ext = ".mp4" if is_video else ".mp3"
     stem = dest.stem
 
-    if is_video:
-        # Never ask for a frame at (or past) the final timestamp.
-        _, _, fps = video_params(path)
-        middle = _held_frame_clip(path, min(at, max(total - 1.0 / fps, 0.0)),
-                                  clip, dest.parent / f"{stem}-mid.mp4")
-    else:
-        middle = dest.parent / f"{stem}-mid.mp3"
-        ffmpeg("-i", clip, "-c:a", "libmp3lame", "-q:a", "2",
-               "-loglevel", "error", middle)
+    if not is_video:
+        return _splice_audio(path, at, clip, dest, total=total)
+
+    # Never ask for a frame at (or past) the final timestamp.
+    _, _, fps = video_params(path)
+    middle = _held_frame_clip(path, min(at, max(total - 1.0 / fps, 0.0)),
+                              clip, dest.parent / f"{stem}-mid.mp4")
 
     parts: list[Path] = []
     if at > 0.05:
-        parts.append(cut(path, 0.0, at, dest.parent / f"{stem}-a{ext}", is_video=is_video))
+        parts.append(cut(path, 0.0, at, dest.parent / f"{stem}-a.mp4", is_video=True))
     parts.append(middle)
     if total - at > 0.05:
-        parts.append(cut(path, at, total, dest.parent / f"{stem}-b{ext}", is_video=is_video))
+        parts.append(cut(path, at, total, dest.parent / f"{stem}-b.mp4", is_video=True))
 
-    return concat(parts, dest, is_video=is_video)
+    return concat(parts, dest, is_video=True)
+
+
+def _splice_audio(path: Path, at: float, clip: Path, dest: Path, *, total: float) -> Path:
+    """Audio splice that stays in PCM until the final encode.
+
+    Joining MP3s carries each part's encoder delay and padding into the result,
+    so every boundary gains a sliver of silence and the output drifts longer
+    than source + insert. Cutting to WAV and concatenating in one filter pass
+    keeps the join sample-accurate.
+    """
+    rate, channels = audio_params(path)
+    stem = dest.stem
+
+    def piece(start: float, end: float, name: str) -> Path:
+        out = dest.parent / f"{stem}-{name}.wav"
+        ffmpeg("-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", path, "-vn",
+               "-ar", str(rate), "-ac", str(channels), "-c:a", "pcm_s16le",
+               "-loglevel", "error", out)
+        return out
+
+    spoken = dest.parent / f"{stem}-mid.wav"
+    ffmpeg("-i", clip, "-ar", str(rate), "-ac", str(channels), "-c:a", "pcm_s16le",
+           "-loglevel", "error", spoken)
+
+    parts: list[Path] = []
+    if at > 0.05:
+        parts.append(piece(0.0, at, "a"))
+    parts.append(spoken)
+    if total - at > 0.05:
+        parts.append(piece(at, total, "b"))
+
+    inputs: list[object] = []
+    for part in parts:
+        inputs += ["-i", str(part)]
+    chain = ("".join(f"[{i}:a:0]" for i in range(len(parts)))
+             + f"concat=n={len(parts)}:v=0:a=1[out]")
+    ffmpeg(*inputs, "-filter_complex", chain, "-map", "[out]",
+           "-c:a", "libmp3lame", "-q:a", "2", "-loglevel", "error", dest)
+    return dest
 
 
 def replace_audio(video: Path, audio: Path, dest: Path) -> Path:
