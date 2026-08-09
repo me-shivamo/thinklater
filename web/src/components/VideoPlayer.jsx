@@ -13,6 +13,9 @@ export default function VideoPlayer({
   duration,
   playing,
   onTogglePlay,
+  preview = 'source',
+  onPreviewChange,
+  hasResult = false,
 }) {
   const [failed, setFailed] = useState(false)
 
@@ -40,15 +43,14 @@ export default function VideoPlayer({
                 🎬
               </div>
               <p className="text-sm font-medium text-zinc-200">
-                No preview video yet
+                {preview === 'result'
+                  ? "This render won't play in the browser"
+                  : "This media won't play in the browser"}
               </p>
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                Drop a file at{' '}
-                <code className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-300">
-                  web/public/sample.mp4
-                </code>{' '}
-                to enable playback. The waveform, transcript, and agent still
-                work without it.
+                {preview === 'result'
+                  ? 'The file is fine — the codec just is not one this browser decodes. Use Export to download it.'
+                  : 'The transcript, waveform, and agent all still work. Try re-ingesting, or use a different source file.'}
               </p>
             </div>
           </div>
@@ -78,6 +80,38 @@ export default function VideoPlayer({
           <span className="text-zinc-200">{formatTime(currentTime)}</span>
           <span className="mx-1 text-zinc-600">/</span>
           <span>{formatTime(duration)}</span>
+        </div>
+
+        {/* A/B the original against what the agent produced. Enabled only once
+            a render exists; the timeline below always stays on the source. */}
+        <div className="ml-auto flex items-center rounded-lg border border-zinc-700 p-0.5">
+          {['source', 'result'].map((mode) => {
+            const isActive = preview === mode
+            const isDisabled = mode === 'result' && !hasResult
+            return (
+              <button
+                key={mode}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => onPreviewChange?.(mode)}
+                title={
+                  isDisabled
+                    ? 'Run an instruction to produce a render'
+                    : `Show the ${mode}`
+                }
+                className={
+                  'rounded-md px-3 py-1 text-xs font-medium capitalize transition ' +
+                  (isActive
+                    ? 'bg-indigo-500 text-white'
+                    : isDisabled
+                      ? 'cursor-not-allowed text-zinc-600'
+                      : 'text-zinc-400 hover:text-zinc-200')
+                }
+              >
+                {mode}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

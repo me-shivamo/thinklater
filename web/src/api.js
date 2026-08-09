@@ -18,8 +18,13 @@ import transcriptFixture from './fixtures/transcript.json'
 import resultFixture from './fixtures/result.json'
 import eventsRaw from './fixtures/events.jsonl?raw'
 
+//  Fixtures are OPT-IN. The failure modes are asymmetric: with fixtures on the
+//  app looks flawless while every byte of it is fake, and the only tell is a
+//  small badge. Live-by-default fails loudly and obviously instead. Note Vite
+//  inlines import.meta.env at BUILD time, so a bundle built without web/.env
+//  bakes this in permanently.
 export const USE_FIXTURES =
-  String(import.meta.env.VITE_USE_FIXTURES ?? '1') !== '0'
+  String(import.meta.env.VITE_USE_FIXTURES ?? '0') === '1'
 
 const API_BASE = '/api' // Vite proxies this to VITE_BACKEND_ORIGIN.
 
@@ -96,10 +101,20 @@ export async function getResult(jobId) {
 }
 
 // ── Download URL for the final file / SRT ────────────────────────────────────
+// dl=1 asks the backend for Content-Disposition: attachment, so the Export
+// button saves with a sensible filename.
 export function downloadUrl(jobId, type) {
   if (USE_FIXTURES) return '/sample.mp4'
-  const q = type ? `?type=${encodeURIComponent(type)}` : ''
+  const q = type ? `?type=${encodeURIComponent(type)}&dl=1` : '?dl=1'
   return `${API_BASE}/download/${encodeURIComponent(jobId)}${q}`
+}
+
+// ── Same file, but streamable ────────────────────────────────────────────────
+// No dl=1, so it comes back inline with Range support and the <video> element
+// can play and seek within the render.
+export function outputStreamUrl(jobId) {
+  if (USE_FIXTURES) return '/sample.mp4'
+  return `${API_BASE}/download/${encodeURIComponent(jobId)}`
 }
 
 // ── Live progress: SSE with a polling fallback ───────────────────────────────

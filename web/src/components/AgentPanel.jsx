@@ -58,7 +58,7 @@ function StatusIcon({ status }) {
  * Renders the agent's progress as a live checklist. Driven entirely by the
  * ProgressEvent stream — the checklist is data-driven, not hard-coded.
  */
-export default function AgentPanel({ events = [], reasoning, running }) {
+export default function AgentPanel({ events = [], reasoning, running, notes = [] }) {
   const [showReasoning, setShowReasoning] = useState(false)
 
   // Collapse the event stream into one row per stage, in first-seen order.
@@ -120,6 +120,20 @@ export default function AgentPanel({ events = [], reasoning, running }) {
             </li>
           ))}
         </ul>
+
+        {/* The engine's user-facing warnings: dub fell back to TTS, language
+            unsupported, nothing matched. A toast is too brief for these —
+            judges ask about them, so they stay on screen. */}
+        {notes.length > 0 && (
+          <ul className="mt-4 space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+            {notes.map((note, i) => (
+              <li key={i} className="flex gap-2 text-xs leading-relaxed text-amber-200/90">
+                <span aria-hidden="true">⚠</span>
+                <span>{note}</span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {reasoning && (
           <div className="mt-4 border-t border-zinc-800 pt-3">
