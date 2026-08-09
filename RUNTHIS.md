@@ -258,3 +258,11 @@ transcription so one filter pass improves both the transcript and the output.
 ```
 https://www.youtube.com/shorts/uBiTZttuFG4 remove background noise from the part where he says 'the deteriorating condishuns by the minute'
 ```
+
+
+KNOWN_OPS = ("find", "trim", "denoise", "translate", "dub", "concat", "export")
+
+https://media.w3.org/2010/05/sintel/trailer.mp4 trim the part where he asks what brings you to the land of the gatekeepers and dub it to Hindi
+
+
+https://media.w3.org/2010/05/sintel/trailer.mp4 remove background noise from this video
