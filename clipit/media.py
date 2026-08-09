@@ -380,6 +380,88 @@ def concat(paths: list[Path], dest: Path, *, is_video: bool) -> Path:
     return dest
 
 
+def video_params(path: Path) -> tuple[int, int, float]:
+    """(width, height, fps) of the first video stream."""
+    out = run([config.FFPROBE, "-v", "error", "-select_streams", "v:0",
+               "-show_entries", "stream=width,height,r_frame_rate",
+               "-of", "default=nw=1", str(path)])
+    width = int(re.search(r"width=(\d+)", out).group(1))
+    height = int(re.search(r"height=(\d+)", out).group(1))
+    rate = re.search(r"r_frame_rate=(\d+)/(\d+)", out)
+    fps = float(rate.group(1)) / float(rate.group(2) or 1) if rate else 30.0
+    return width, height, (fps if fps > 0 else 30.0)
+
+
+def audio_params(path: Path) -> tuple[int, int]:
+    """(sample_rate, channels) of the first audio stream."""
+    out = run([config.FFPROBE, "-v", "error", "-select_streams", "a:0",
+               "-show_entries", "stream=sample_rate,channels",
+               "-of", "default=nw=1", str(path)])
+    rate = re.search(r"sample_rate=(\d+)", out)
+    channels = re.search(r"channels=(\d+)", out)
+    return (int(rate.group(1)) if rate else 44100,
+            int(channels.group(1)) if channels else 2)
+
+
+def frame_at(path: Path, when: float, dest: Path) -> Path:
+    ffmpeg("-ss", f"{max(when, 0.0):.3f}", "-i", path, "-frames:v", "1",
+           "-loglevel", "error", dest)
+    return dest
+
+
+def _held_frame_clip(source: Path, when: float, audio: Path, dest: Path) -> Path:
+    """A still of ``source`` at ``when``, held for the length of ``audio``.
+
+    Encoded to match the source's geometry, frame rate and audio layout so the
+    concat demuxer can stream-copy the join instead of re-encoding everything.
+    """
+    width, height, fps = video_params(source)
+    rate, channels = audio_params(source)
+    still = dest.parent / f"{dest.stem}-still.png"
+    frame_at(source, when, still)
+
+    ffmpeg("-loop", "1", "-framerate", f"{fps:.5f}", "-i", still, "-i", audio,
+           "-t", f"{duration_of(audio):.3f}",
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+           "-pix_fmt", "yuv420p", "-r", f"{fps:.5f}", "-s", f"{width}x{height}",
+           "-c:a", "aac", "-b:a", "128k", "-ar", str(rate), "-ac", str(channels),
+           "-shortest", "-movflags", "+faststart", "-loglevel", "error", dest)
+    return dest
+
+
+def splice(path: Path, at: float, clip: Path, dest: Path, *, is_video: bool) -> Path:
+    """Insert ``clip``'s audio into ``path`` at ``at`` seconds.
+
+    Video gains time rather than losing sync: the frame at the insertion point
+    is held for exactly the length of the inserted audio, so everything after it
+    stays aligned with the picture. Shifting the audio instead would desync the
+    entire remainder of the video.
+    """
+    total = duration_of(path)
+    at = max(0.0, min(at, total))
+    ext = ".mp4" if is_video else ".mp3"
+    stem = dest.stem
+
+    if is_video:
+        # Never ask for a frame at (or past) the final timestamp.
+        _, _, fps = video_params(path)
+        middle = _held_frame_clip(path, min(at, max(total - 1.0 / fps, 0.0)),
+                                  clip, dest.parent / f"{stem}-mid.mp4")
+    else:
+        middle = dest.parent / f"{stem}-mid.mp3"
+        ffmpeg("-i", clip, "-c:a", "libmp3lame", "-q:a", "2",
+               "-loglevel", "error", middle)
+
+    parts: list[Path] = []
+    if at > 0.05:
+        parts.append(cut(path, 0.0, at, dest.parent / f"{stem}-a{ext}", is_video=is_video))
+    parts.append(middle)
+    if total - at > 0.05:
+        parts.append(cut(path, at, total, dest.parent / f"{stem}-b{ext}", is_video=is_video))
+
+    return concat(parts, dest, is_video=is_video)
+
+
 def replace_audio(video: Path, audio: Path, dest: Path) -> Path:
     ffmpeg("-i", video, "-i", audio, "-map", "0:v:0", "-map", "1:a:0",
            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest",

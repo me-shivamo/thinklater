@@ -20,11 +20,18 @@ and segment location), **Sarvam Translate**, **Bulbul** (TTS) and **Sarvam Dub**
 | "Trim the credit card part and dub it in Hindi" | find → trim → dub |
 | "Remove background noise from this audio" | denoise |
 | "Remove the noise from the part where he says 'I am a moster'" | denoise → find → trim |
+| "After he says Amazon, insert the word 'Sarvam'" | insert |
+| "Insert 'Sarvam' after Amazon, then trim the company list" | insert → find → trim |
 
 Ops compose freely — the agent decides the chain, you don't pick from a menu.
 
+`insert` is the one op that *adds* rather than removes: it speaks the new words
+with Bulbul and splices them in next to an anchor you name. On video the frame
+at the insertion point is held for exactly the length of the new audio, so
+everything after it stays in sync with the picture.
+
 **Input:** YouTube link · direct audio/video URL · uploaded file
-**Output:** trimmed / denoised / dubbed MP4 or MP3, plus an SRT when dubbing.
+**Output:** trimmed / denoised / dubbed / augmented MP4 or MP3, plus an SRT when dubbing.
 
 ---
 
@@ -75,6 +82,10 @@ Three scheduling rules that matter:
    transcribes internally.
 3. **Trim always happens before dub** — dub cost and latency scale with output
    length.
+4. **`insert` is hoisted ahead of everything** so it runs against the media the
+   transcript actually describes. Later ops are re-timed through
+   `_shift_for_inserts`, and segments the insertion lands inside are split at
+   that point so a following dub doesn't talk over the new words.
 
 ---
 
@@ -92,6 +103,16 @@ Things that are true but not obvious from the docs:
 - **`sarvam-translate:v1` accepts `mode="formal"` only**, and rejects
   `source_language_code="auto"` — pass a real code.
 - **TTS takes `language_code`**, not `target_language_code`.
+- **The `speaker` enum in `sarvamai` 0.1.30 is the bulbul:v2 list.** `abhilash`,
+  `karun`, `hitesh`, `anushka`, `manisha`, `vidya` and `arya` are legal values
+  of the SDK type and a hard 400 against `bulbul:v3`; v3 also serves voices the
+  enum omits (`niharika`). `config.resolve_speaker()` gates every TTS call.
+- **There is no standalone voice-cloning API.** Cloning exists only as
+  `dubbing.create(voice_cloning=True)` over a whole file — `voice_id` is the
+  *preset* used when cloning is off, not a handle to a voice you cloned. So
+  `insert` speaks in a preset Bulbul voice, not the original speaker's.
+- **`loudnorm` outputs at 192 kHz** unless you pin `-ar`, which quietly makes
+  intermediate WAVs 4x larger than expected.
 - **Odia is `or-IN` in the Dubbing API and `od-IN` everywhere else.** Assamese is
   dubbable but not TTS-able. Four APIs, four language sets — all mapped in
   `clipit/config.py`.

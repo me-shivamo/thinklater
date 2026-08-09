@@ -95,6 +95,37 @@ https://youtube.com/shorts/VehpmwRhJo4 trim the part where he speaks about Pandi
 ```
 → `3.60s – 7.89s` · Tamil video + SRT · ⚠️ 2–5 min
 
+### ✅ Insert — adding words that were never spoken
+
+**The Sarvam name-drop** — verified end to end
+```
+https://www.youtube.com/shorts/ASXSN4IUBDY after he says Amazon, insert the word "Sarvam" and keep the rest of the video
+```
+→ lands at `6.29s`, adds ~1.1s · ~27s · video grows 59.44s → 60.6s
+
+**Insert then cut to just that moment**
+```
+https://www.youtube.com/shorts/ASXSN4IUBDY insert the word "Sarvam" after Amazon, then trim just the part where he lists the big tech companies
+```
+→ `2.10s – 7.27s` on the original timeline, re-timed around the insert · ~6.1s clip
+
+**Insert then dub** — the new word gets translated and spoken too
+```
+https://www.youtube.com/shorts/ASXSN4IUBDY insert the word "Sarvam" after Amazon and dub it to Hindi
+```
+→ SRT reads `गूगल, माइक्रोसॉफ्ट, अमेज़ॅन,` → `सर्वम` → `वे सब।` · ⚠️ 2–5 min on `auto`
+
+**Works on audio too**
+```
+https://storage.googleapis.com/eleven-public-cdn/documentation_assets/audio/stt-entity-detection-pii.mp3 insert the words "verified by Sarvam" after she says her credit card number
+```
+→ anchors on "my credit card number" despite the pronoun swap · `6.66s`
+
+> The inserted word is a **preset Bulbul voice**, not the speaker's — Sarvam has
+> no standalone cloning API. It reads as a deliberate edit, not a seamless one.
+> Pick the voice with `--speaker` (CLI) or `CLIPIT_TTS_SPEAKER` (bot); `vijay`
+> is tighter than the `shubh` default for single words.
+
 **Sintel trailer** (English, 52s)
 ```
 https://media.w3.org/2010/05/sintel/trailer.mp4 trim the part where he asks what brings you to the land of the gatekeepers
@@ -191,3 +222,8 @@ Every run prints a **Where the time went** breakdown, so you can answer
 
 https://www.youtube.com/shorts/uBiTZttuFG4 trim the part where it speaks about Anderson and dub it to Hindi
 
+
+https://www.youtube.com/shorts/uBiTZttuFG4 remove the background noise from this
+
+
+KNOWN_OPS = ("find", "trim", "denoise", "insert", "translate", "dub", "concat", "export")

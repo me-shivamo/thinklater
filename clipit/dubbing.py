@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -199,6 +200,26 @@ def dub_with_sarvam(path: Path, target: str, workdir: Path, *,
 # --------------------------------------------------------------------------
 # Manual fallback: Translate + Bulbul TTS, fitted to the original timing
 # --------------------------------------------------------------------------
+
+def synthesize(text: str, language: str, workdir: Path, *,
+               speaker: str | None = None, pace: float = 1.0,
+               tail: float = 0.12) -> Path:
+    """Render a short phrase to a WAV sized for splicing into existing audio.
+
+    Bulbul returns speech noticeably quieter than broadcast media, so a raw TTS
+    clip dropped into a video sounds like it came from another room. loudnorm
+    puts it on the same footing as the surrounding audio; the tail pad keeps the
+    following word from landing on top of it.
+    """
+    raw = workdir / f"say-{uuid.uuid4().hex[:8]}.wav"
+    raw.write_bytes(sarvam.tts(text, language, speaker=speaker, pace=pace))
+
+    dest = raw.with_name(raw.stem + "-norm.wav")
+    media.ffmpeg("-i", raw, "-af",
+                 f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=pad_dur={max(tail, 0.0):.3f}",
+                 "-c:a", "pcm_s16le", "-loglevel", "error", dest)
+    return dest
+
 
 def _srt_time(seconds: float) -> str:
     ms = int(round(seconds * 1000))

@@ -49,6 +49,20 @@ TRANSLATE_MODEL = "sarvam-translate:v1"
 TTS_MODEL = "bulbul:v3"
 TTS_SPEAKER = os.getenv("CLIPIT_TTS_SPEAKER", "shubh")
 
+# The `speaker` enum in sarvamai 0.1.30 is the *bulbul:v2* list. Passing one of
+# the v2-only names (abhilash, karun, hitesh, anushka, manisha, vidya, arya) to
+# bulbul:v3 is a hard 400 — and the SDK type won't warn you, because those names
+# are still legal values. v3 also serves voices the enum omits (niharika). This
+# set is copied from a live v3 error response; keep it as the source of truth.
+TTS_SPEAKERS = {
+    "aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan",
+    "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun",
+    "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand",
+    "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani",
+    "mohit", "kavitha", "rehan", "soham", "rupali", "niharika",
+}
+TTS_SPEAKER_FALLBACK = "shubh"
+
 # --------------------------------------------------------------------------
 # Limits
 # --------------------------------------------------------------------------
@@ -182,6 +196,24 @@ def to_dub_code(code: str) -> str:
 def to_tts_code(code: str) -> str:
     """Dubbing/other code -> TTS code."""
     return "od-IN" if code == "or-IN" else code
+
+
+def resolve_speaker(name: str | None) -> str:
+    """Return a speaker bulbul:v3 will actually accept.
+
+    Silently correcting a bad name beats a 400 mid-render: the speaker is a
+    cosmetic choice, and failing a whole dub over it is the worse outcome.
+    """
+    candidate = (name or TTS_SPEAKER).strip().lower()
+    if candidate in TTS_SPEAKERS:
+        return candidate
+    import logging
+
+    logging.getLogger("clipit.config").warning(
+        "speaker %r is not available on %s; using %r",
+        candidate, TTS_MODEL, TTS_SPEAKER_FALLBACK,
+    )
+    return TTS_SPEAKER_FALLBACK
 
 
 def language_label(code: str | None) -> str:
