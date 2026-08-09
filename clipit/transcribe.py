@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Callable
 
@@ -22,14 +22,65 @@ log = logging.getLogger("clipit.transcribe")
 
 
 @dataclass
+class Word:
+    text: str
+    start: float
+    end: float
+
+    def to_dict(self) -> dict:
+        return {"text": self.text, "start": round(self.start, 3), "end": round(self.end, 3)}
+
+
+@dataclass
 class Segment:
     id: int
     start: float
     end: float
     text: str
+    words: list[Word] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["words"] = [w.to_dict() for w in self.words]
+        return d
+
+
+# Punctuation earns extra "time weight" because speakers pause there.
+_PAUSE_WEIGHT = {",": 1.6, ";": 2.0, ":": 2.0, "।": 3.0, ".": 3.0,
+                 "?": 3.0, "!": 3.0, "—": 2.0, "…": 3.0}
+
+
+def estimate_words(text: str, start: float, end: float) -> list[Word]:
+    """Distribute a chunk's words across its span.
+
+    Sarvam returns one timestamp per request, not per word, so word timings are
+    interpolated: each token's share of the span is proportional to its length,
+    plus a bonus for trailing punctuation where speakers naturally pause. Within
+    a short chunk this lands close enough for word highlighting in a UI; it is
+    an estimate, not ground truth, and is labelled as such in the API.
+    """
+    tokens = text.split()
+    span = max(end - start, 0.0)
+    if not tokens or span <= 0:
+        return []
+
+    weights: list[float] = []
+    for tok in tokens:
+        weight = float(max(len(tok), 1))
+        for ch, bonus in _PAUSE_WEIGHT.items():
+            if tok.endswith(ch):
+                weight += bonus
+                break
+        weights.append(weight)
+
+    total = sum(weights)
+    words: list[Word] = []
+    cursor = start
+    for tok, weight in zip(tokens, weights):
+        width = span * (weight / total)
+        words.append(Word(tok, round(cursor, 3), round(min(cursor + width, end), 3)))
+        cursor += width
+    return words
 
 
 @dataclass
@@ -51,10 +102,15 @@ class Transcript:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Transcript":
+        segments = []
+        for s in d.get("segments", []):
+            words = [Word(**w) for w in (s.get("words") or [])]
+            segments.append(Segment(id=s["id"], start=s["start"], end=s["end"],
+                                    text=s["text"], words=words))
         return cls(
             language=d.get("language") or "unknown",
             duration=float(d.get("duration") or 0.0),
-            segments=[Segment(**s) for s in d.get("segments", [])],
+            segments=segments,
         )
 
     def numbered(self, max_chars: int = 60000) -> str:
@@ -103,6 +159,7 @@ def _stitch(results: list[tuple[float, object]]) -> tuple[list[Segment], str]:
     segments.sort(key=lambda s: (s.start, s.end))
     for i, seg in enumerate(segments):
         seg.id = i
+        seg.words = estimate_words(seg.text, seg.start, seg.end)
 
     language = max(set(languages), key=languages.count) if languages else "unknown"
     return segments, language

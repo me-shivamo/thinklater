@@ -60,10 +60,10 @@ MAX_INPUT_SECONDS = 15 * 60   # reject longer sources up front
 # saaras:v3 and v4 — a 15s request comes back as a single 0.00->15.23 span).
 # That means *our* chunk size is the timestamp resolution the locator gets, so
 # chunks are sized for precision rather than for the 30s ceiling.
-STT_CHUNK_MIN = 4.0           # finest granularity worth paying for
-STT_CHUNK_MAX = 18.0          # coarsest we tolerate on long media
-STT_CHUNK_FLOOR = 1.5         # never emit slivers shorter than this
-STT_TARGET_CHUNKS = 45        # rough call budget per media file
+STT_CHUNK_MIN = 2.5           # finest granularity worth paying for
+STT_CHUNK_MAX = 15.0          # coarsest we tolerate on long media
+STT_CHUNK_FLOOR = 1.2         # never emit slivers shorter than this
+STT_TARGET_CHUNKS = 60        # rough call budget per media file
 
 TRANSLATE_MAX_CHARS = 1800    # sarvam-translate:v1 caps at 2000
 TTS_MAX_CHARS = 2400          # bulbul:v3 caps at 2500
