@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ClipIt Telegram bot.
+"""ClipCraft Telegram bot.
 
 Send a link (or a file) with an instruction; get the edited media back.
 
@@ -53,7 +53,7 @@ EXAMPLES = [
 ]
 
 WELCOME = (
-    "🎬 <b>ClipIt</b> — natural-language media editor\n\n"
+    "🎬 <b>ClipCraft</b> — natural-language media editor\n\n"
     "Send me a <b>link</b> (YouTube or a direct audio/video URL) or a "
     "<b>file</b>, together with what you want done.\n\n"
     "<b>Try:</b>\n"
@@ -90,7 +90,7 @@ class Status:
         self.lines.append((event.stage, event.status, event.message))
 
     def render(self) -> str:
-        out = ["🎬 <b>ClipIt</b>"]
+        out = ["🎬 <b>ClipCraft</b>"]
         for _, status, message in self.lines:
             icon = self.ICONS.get(status, "•")
             text = html.escape(message or "")
@@ -181,7 +181,7 @@ async def _process(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     await ctx.bot.send_chat_action(chat.id, ChatAction.TYPING)
 
     status = Status()
-    message = await update.message.reply_text("🎬 <b>ClipIt</b>\n⏳ <i>Starting…</i>",
+    message = await update.message.reply_text("🎬 <b>ClipCraft</b>\n⏳ <i>Starting…</i>",
                                               parse_mode=ParseMode.HTML)
 
     queue: asyncio.Queue = asyncio.Queue()
@@ -241,7 +241,7 @@ async def _process(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         else:
             await update.message.reply_audio(fh, caption=caption,
                                              parse_mode=ParseMode.HTML,
-                                             title="ClipIt result")
+                                             title="ClipCraft result")
 
     if result.srt and Path(result.srt).exists():
         with open(result.srt, "rb") as fh:
@@ -339,7 +339,7 @@ def main() -> None:
     ))
     app.add_error_handler(on_error)
 
-    log.info("ClipIt bot is up. Talk to it on Telegram.")
+    log.info("ClipCraft bot is up. Talk to it on Telegram.")
     app.run_polling(drop_pending_updates=True)
 
 

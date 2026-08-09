@@ -43,10 +43,14 @@ export default function App() {
   const [running, setRunning] = useState(false)
   const [jobId, setJobId] = useState(null)
   const [clips, setClips] = useState([])
+  const [points, setPoints] = useState([])
   const [plan, setPlan] = useState(null)
   const [notes, setNotes] = useState([])
   const [outputUrl, setOutputUrl] = useState(null)
   const [srtUrl, setSrtUrl] = useState(null)
+  // Mirrors the bot's caption: which dub engine ran, and whether the speaker's
+  // own voice was cloned. Judges ask about this, so it has to be on screen.
+  const [dubInfo, setDubInfo] = useState(null)
   const [resultReady, setResultReady] = useState(false)
   const [preview, setPreview] = useState('source')
   const [toast, setToast] = useState(null)
@@ -197,10 +201,12 @@ export default function App() {
       unsubRef.current?.()
       setEvents([])
       setClips([])
+      setPoints([])
       setPlan(null)
       setNotes([])
       setOutputUrl(null)
       setSrtUrl(null)
+      setDubInfo(null)
       setResultReady(false)
       setPreview('source')
       setRunning(true)
@@ -213,10 +219,16 @@ export default function App() {
             try {
               const res = await getResult(job_id)
               setClips(res.clips || [])
+              setPoints(res.points || [])
               setPlan(res.plan || null)
               setNotes(res.notes || [])
               setOutputUrl(res.output_url || null)
               setSrtUrl(res.srt_url || null)
+              setDubInfo(
+                res.dub_engine
+                  ? { engine: res.dub_engine, cloned: !!res.voice_cloned }
+                  : null,
+              )
 
               // A job can finish "successfully" with nothing to show — e.g. the
               // locator found no match. Gate Export on a real output so the
@@ -335,7 +347,17 @@ export default function App() {
 
       {/* Footer: matches + export */}
       <div className="flex items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/40 px-4 py-2.5">
-        <ClipList clips={clips} onPreview={previewClip} />
+        <div className="flex min-w-0 items-center gap-3">
+          <ClipList clips={clips} points={points} onPreview={previewClip} />
+          {dubInfo && (
+            <span
+              title={`Dubbed via the ${dubInfo.engine} engine`}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-2.5 py-1 text-[11px] font-medium text-fuchsia-200"
+            >
+              🎙 Dubbed{dubInfo.cloned ? ' · voice cloned' : ''}
+            </span>
+          )}
+        </div>
         <ExportBar
           outputUrl={outputUrl ? downloadUrl(jobId) : null}
           srtUrl={srtUrl ? downloadUrl(jobId, 'srt') : null}

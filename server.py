@@ -398,6 +398,10 @@ def result(job_id: str) -> dict:
         for c in (res.clips or [])
     ]
 
+    # Where the `insert` op spliced new speech in. The bot reports these in its
+    # caption, so the web has to as well or the two surfaces disagree.
+    points = [p.to_dict() for p in (getattr(res, "points", None) or [])]
+
     plan_payload = None
     if res.plan is not None:
         plan_payload = {
@@ -414,6 +418,7 @@ def result(job_id: str) -> dict:
         "status": job.status,
         "error": job.error,
         "clips": clips,
+        "points": points,
         "output_url": f"/api/download/{job_id}" if res.output else None,
         "srt_url": f"/api/download/{job_id}?type=srt" if has_srt else None,
         "plan": plan_payload,
