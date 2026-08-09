@@ -101,6 +101,12 @@ def main() -> int:
             print(f"\n{RED}No output produced.{RESET}")
         return 1
 
+    if result.points:
+        print(f"\n{BOLD}Insertions{RESET}")
+        for p in result.points:
+            print(f"  {p.time:7.2f}s  after {p.anchor!r}  "
+                  f"{DIM}conf {p.confidence:.2f}{RESET}  {p.reason}")
+
     if result.clips:
         print(f"\n{BOLD}Matches{RESET}")
         for c in result.clips:

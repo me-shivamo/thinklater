@@ -22,9 +22,9 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from . import config, dubbing, media
-from .agent import Clip, Plan, locate_clips, make_plan
+from .agent import Clip, Plan, Point, locate_clips, locate_insert_point, make_plan
 from .media import MediaError, MediaInfo, MediaKind
-from .transcribe import Transcript, transcribe
+from .transcribe import Segment, Transcript, transcribe
 
 log = logging.getLogger("clipit.pipeline")
 
@@ -46,6 +46,7 @@ class Result:
     output: Path | None = None
     srt: Path | None = None
     clips: list[Clip] = field(default_factory=list)
+    points: list[Point] = field(default_factory=list)
     plan: Plan | None = None
     transcript: Transcript | None = None
     kind: MediaKind = MediaKind.AUDIO
@@ -58,6 +59,7 @@ class Result:
             "output": str(self.output) if self.output else None,
             "srt": str(self.srt) if self.srt else None,
             "clips": [c.to_dict() for c in self.clips],
+            "points": [p.to_dict() for p in self.points],
             "plan": self.plan.to_dict() if self.plan else None,
             "kind": self.kind.value,
             "notes": self.notes,
@@ -71,13 +73,83 @@ def _schedule(plan: Plan) -> tuple[list[dict], bool, bool]:
     ops = [dict(o) for o in plan.ops]
     names = [o["op"] for o in ops]
 
-    needs_transcript = "find" in names
-    denoise_first = "denoise" in names and "find" in names
+    needs_transcript = "find" in names or "insert" in names
+    denoise_first = "denoise" in names and needs_transcript
 
     if denoise_first:
         ops = [o for o in ops if o["op"] != "denoise"]
 
+    # `insert` is hoisted ahead of everything else so it always runs against the
+    # media the transcript describes. Both `insert` and `find` resolve their
+    # timestamps from that one transcript; letting a trim land first would leave
+    # the insert pointing into footage that no longer exists.
+    if "insert" in names:
+        inserts = [o for o in ops if o["op"] == "insert"]
+        ops = inserts + [o for o in ops if o["op"] != "insert"]
+
     return ops, denoise_first, needs_transcript
+
+
+def _shift_for_inserts(when: float, inserts: list[tuple[float, float, str]],
+                       *, inclusive: bool = False) -> float:
+    """Map an original-timeline instant onto the post-insert timeline.
+
+    ``inclusive`` decides which side of an insertion an instant sitting exactly
+    on it belongs to — a segment *starting* there comes after the new words, a
+    segment *ending* there comes before them.
+    """
+    shifted = when
+    for at, added, _ in inserts:
+        if when > at or (inclusive and when >= at):
+            shifted += added
+    return shifted
+
+
+def _split_segment(segment: Segment, at: float) -> tuple[Segment, Segment] | None:
+    """Cut a segment in two at ``at``, using its word timings."""
+    before = [w for w in segment.words if w.end <= at]
+    after = [w for w in segment.words if w.end > at]
+    if not before or not after:
+        return None
+    return (
+        Segment(segment.id, segment.start, before[-1].end,
+                " ".join(w.text for w in before), before),
+        Segment(segment.id, at, segment.end,
+                " ".join(w.text for w in after), after),
+    )
+
+
+def _segments_after_inserts(transcript: Transcript,
+                            inserts: list[tuple[float, float, str]]) -> list[Segment]:
+    """Transcript segments re-timed onto the post-insert timeline.
+
+    The spliced words become segments of their own, so a dub that follows an
+    insert speaks them too instead of leaving a silent hole. Segments that the
+    insertion lands inside are split at that point first — otherwise the dub
+    stretches the original line across the new words and the two overlap.
+    """
+    if not inserts:
+        return list(transcript.segments)
+
+    pieces = list(transcript.segments)
+    for at, _, _ in inserts:
+        rebuilt: list[Segment] = []
+        for segment in pieces:
+            halves = _split_segment(segment, at) if segment.start < at < segment.end else None
+            rebuilt.extend(halves if halves else [segment])
+        pieces = rebuilt
+
+    segments = [Segment(s.id, _shift_for_inserts(s.start, inserts, inclusive=True),
+                        _shift_for_inserts(s.end, inserts), s.text)
+                for s in pieces]
+    for at, added, text in inserts:
+        start = _shift_for_inserts(at, inserts)
+        segments.append(Segment(-1, start, start + added, text))
+
+    segments.sort(key=lambda s: (s.start, s.end))
+    for i, segment in enumerate(segments):
+        segment.id = i
+    return segments
 
 
 def run(source: str | Path, instruction: str, *,
@@ -148,9 +220,49 @@ def run(source: str | Path, instruction: str, *,
         # ------------------------------------------------------ execute ops
         clips: list[Clip] = []
         pieces: list[Path] = []
+        inserts: list[tuple[float, float, str]] = []   # (original time, seconds added, text)
 
         for op in ops:
             name, args = op["op"], op.get("args") or {}
+
+            if name == "insert":
+                text = str(args.get("text") or "").strip()
+                if not text:
+                    continue
+                anchor = str(args.get("anchor") or "").strip()
+                position = str(args.get("position") or "after").lower()
+
+                where = f'{position} "{anchor}"' if anchor else "in"
+                yield Event("insert", "running", f'Placing "{text}" {where}')
+
+                point = locate_insert_point(transcript, anchor or instruction,
+                                            position=position) if transcript else None
+                if point is None:
+                    result.notes.append(
+                        f"I couldn't find \"{anchor or text}\" in this media, "
+                        f"so there was nowhere to add \"{text}\"."
+                    )
+                    yield Event("insert", "error", result.notes[-1])
+                    yield Event("done", "error", result.notes[-1], {"result": result})
+                    return
+
+                # Bulbul covers fewer languages than STT; English is the safe
+                # default for a source language it cannot speak.
+                voice_lang = source_lang if source_lang in config.TTS_LANGUAGES else "en-IN"
+                spoken = dubbing.synthesize(text, voice_lang, workdir, speaker=speaker)
+                added = media.duration_of(spoken)
+
+                dest = workdir / f"spliced{len(inserts):02d}{'.mp4' if is_video else '.mp3'}"
+                current = media.splice(current,
+                                       _shift_for_inserts(point.time, inserts),
+                                       spoken, dest, is_video=is_video)
+                inserts.append((point.time, added, text))
+                pieces = []
+                result.points.append(point)
+
+                yield Event("insert", "done",
+                            f'Added "{text}" at {point.time:.2f}s (+{added:.2f}s)',
+                            {"point": point.to_dict(), "seconds_added": round(added, 3)})
 
             if name == "find":
                 query = str(args.get("query") or instruction)
@@ -179,8 +291,12 @@ def run(source: str | Path, instruction: str, *,
                 pieces = []
                 for i, clip in enumerate(clips):
                     dest = workdir / f"clip{i:02d}{'.mp4' if is_video else '.mp3'}"
-                    pieces.append(media.cut(current, clip.start, clip.end, dest,
-                                            is_video=is_video))
+                    # Clips were located on the original transcript; if words
+                    # were spliced in since, the media is longer than it was.
+                    pieces.append(media.cut(current,
+                                            _shift_for_inserts(clip.start, inserts),
+                                            _shift_for_inserts(clip.end, inserts),
+                                            dest, is_video=is_video))
                 current = pieces[0]
                 yield Event("trim", "done", f"Cut {len(pieces)} clip(s)")
 
@@ -243,13 +359,13 @@ def run(source: str | Path, instruction: str, *,
                         transcript = transcribe(current, use_cache=use_cache)
                         result.transcript = transcript
                         source_lang = transcript.language if transcript.language != "unknown" else "en-IN"
-                    segs = transcript.segments
+                    segs = _segments_after_inserts(transcript, inserts)
                     if clips:
-                        offset = clips[0].start
-                        segs = [type(s)(s.id, max(0.0, s.start - offset),
-                                        max(0.0, s.end - offset), s.text)
-                                for s in transcript.segments
-                                if s.end > clips[0].start and s.start < clips[0].end]
+                        lo = _shift_for_inserts(clips[0].start, inserts)
+                        hi = _shift_for_inserts(clips[0].end, inserts)
+                        segs = [Segment(s.id, max(0.0, s.start - lo),
+                                        max(0.0, s.end - lo), s.text)
+                                for s in segs if s.end > lo and s.start < hi]
                     dubbed = dubbing.dub_manual(
                         current, target, workdir, segs,
                         source=source_lang, is_video=is_video,

@@ -19,7 +19,7 @@ from .transcribe import Transcript
 
 log = logging.getLogger("clipit.agent")
 
-KNOWN_OPS = ("find", "trim", "denoise", "translate", "dub", "concat", "export")
+KNOWN_OPS = ("find", "trim", "denoise", "translate", "insert", "dub", "concat", "export")
 
 PLAN_SCHEMA = {
     "type": "object",
@@ -40,6 +40,18 @@ PLAN_SCHEMA = {
         "unsupported_language": {"type": ["string", "null"]},
     },
     "required": ["reasoning", "ops"],
+}
+
+POINT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "segment_id": {"type": "integer"},
+        "anchor_text": {"type": "string"},
+        "position": {"type": "string", "enum": ["after", "before"]},
+        "reason": {"type": "string"},
+        "confidence": {"type": "number"},
+    },
+    "required": ["segment_id", "anchor_text", "position", "reason", "confidence"],
 }
 
 LOCATE_SCHEMA = {
@@ -69,6 +81,8 @@ Available operations:
 - find      args: {{"query": str, "max_clips": int}}   locate the part(s) the user described
 - trim      args: {{"padding_seconds": float}}          cut the located part(s) out
 - denoise   args: {{}}                                   remove background noise
+- insert    args: {{"text": str, "anchor": str, "position": "after"|"before"}}
+                                                        speak `text` and splice it in next to `anchor`
 - dub       args: {{"target_language_code": str}}        translate + revoice into another language
 - concat    args: {{}}                                   join multiple clips into one
 - export    args: {{}}                                   finalise the output file
@@ -86,6 +100,12 @@ Rules:
    do NOT emit `dub` — set "unsupported_language" to what they asked for.
 7. `query` should describe the content semantically. If the user quoted words,
    keep the quote in the query even if it is misspelled.
+8. Emit `insert` when the user wants words ADDED that are not already spoken
+   ("add X after Y", "insert X", "make him also say X", "append X to the list").
+   `text` is exactly the words to speak — no quotes, no surrounding instruction.
+   `anchor` is the existing spoken words to attach it to, as the user referred
+   to them. `insert` carries its own anchor, so do NOT emit `find` just to
+   locate that anchor — only emit `find` if the user separately wants a cut.
 
 Return JSON only."""
 
@@ -106,6 +126,52 @@ Rules:
 5. If genuinely nothing matches, return an empty clips array.
 
 Return JSON only."""
+
+
+POINT_SYSTEM = """You are an expert video editor finding the exact spot to splice
+new words into a recording.
+
+You get a numbered transcript. Each line is: [id] MM:SS.ss->MM:SS.ss text
+
+The user wants to add words next to something already spoken. Identify which
+segment holds that anchor, and quote the anchor words exactly as they appear in
+the transcript.
+
+The user is describing the anchor from memory, so their wording will not match
+the transcript exactly. Expect swapped pronouns ("her name" for "my name"),
+paraphrases, and misspellings. Match on meaning and sound.
+
+Rules:
+1. `anchor_text` MUST be copied verbatim from the transcript segment, including
+   its punctuation — not from the user's phrasing. Do not correct it.
+2. Prefer the shortest anchor that is unambiguous — usually one or two words.
+3. If the anchor appears in more than one segment, pick the one the user most
+   likely meant from context, and say why in `reason`.
+4. `position` is "after" to place the new words following the anchor, "before"
+   to place them ahead of it.
+5. Lower `confidence` when the match is loose, but still return your best
+   candidate. Reserve confidence 0 for when the transcript contains nothing
+   that could plausibly be what the user meant.
+
+Return JSON only."""
+
+
+@dataclass
+class Point:
+    time: float
+    anchor: str = ""
+    reason: str = ""
+    confidence: float = 0.0
+    segment_id: int = -1
+
+    def to_dict(self) -> dict:
+        return {
+            "time": round(self.time, 3),
+            "anchor": self.anchor,
+            "reason": self.reason,
+            "confidence": round(self.confidence, 3),
+            "segment_id": self.segment_id,
+        }
 
 
 @dataclass
@@ -173,6 +239,19 @@ def _normalise(raw: dict, instruction: str) -> Plan:
     # Repairs -------------------------------------------------------------
     names = [o["op"] for o in ops]
 
+    # An insert with nothing to say is not an insert.
+    ops = [o for o in ops
+           if o["op"] != "insert" or str(o["args"].get("text") or "").strip()]
+    names = [o["op"] for o in ops]
+
+    for op in ops:
+        if op["op"] == "insert":
+            args = op["args"]
+            args["text"] = str(args.get("text") or "").strip()
+            args["anchor"] = str(args.get("anchor") or "").strip()
+            if str(args.get("position") or "").lower() not in ("after", "before"):
+                args["position"] = "after"
+
     if "trim" in names and "find" not in names:
         ops = [o for o in ops if o["op"] != "trim"]
         names = [o["op"] for o in ops]
@@ -191,6 +270,15 @@ def _normalise(raw: dict, instruction: str) -> Plan:
         ops.insert(insert_at, {"op": "dub", "args": {"target_language_code": target}})
         names = [o["op"] for o in ops]
 
+    # A dub op whose language we can't resolve is the planner's way of saying
+    # "they asked for something I don't have a code for" — almost always a
+    # language Sarvam doesn't dub. Left alone the executor skips it silently and
+    # hands back an untouched file with no explanation.
+    if not target and "dub" in names:
+        unsupported = unsupported or "that language"
+        ops = [o for o in ops if o["op"] != "dub"]
+        names = [o["op"] for o in ops]
+
     if target and target not in config.DUB_LANGUAGES:
         unsupported = unsupported or config.language_label(target)
         ops = [o for o in ops if o["op"] != "dub"]
@@ -202,7 +290,7 @@ def _normalise(raw: dict, instruction: str) -> Plan:
 
     # An instruction that produced no real work at all is a planning failure;
     # fall back to something sensible rather than returning an empty pipeline.
-    if not any(o["op"] in ("find", "denoise", "dub") for o in ops):
+    if not any(o["op"] in ("find", "denoise", "dub", "insert") for o in ops):
         log.warning("plan had no substantive op; falling back to find+trim")
         ops = [
             {"op": "find", "args": {"query": instruction, "max_clips": 1}},
@@ -232,6 +320,88 @@ def make_plan(instruction: str) -> Plan:
     plan = _normalise(raw, instruction)
     log.info("plan: %s", " -> ".join(plan.op_names()))
     return plan
+
+
+def _normalise_token(token: str) -> str:
+    return "".join(ch for ch in token.lower() if ch.isalnum())
+
+
+def _find_anchor_words(segment, anchor: str) -> tuple[int, int] | None:
+    """Index range of ``anchor`` within a segment's words, ignoring punctuation."""
+    needle = [_normalise_token(t) for t in anchor.split()]
+    needle = [t for t in needle if t]
+    haystack = [_normalise_token(w.text) for w in segment.words]
+    if not needle or not haystack:
+        return None
+    for i in range(len(haystack) - len(needle) + 1):
+        if haystack[i:i + len(needle)] == needle:
+            return i, i + len(needle) - 1
+    return None
+
+
+def locate_insert_point(transcript: Transcript, anchor: str, *,
+                        position: str = "after") -> Point | None:
+    """Resolve where new speech should be spliced in.
+
+    The LLM picks the segment and quotes the anchor; the exact time comes from
+    the word timings, which are interpolated within a segment
+    (:func:`transcribe.estimate_words`) rather than measured. That is accurate
+    enough here because an insertion point is a single instant next to a natural
+    pause, not a boundary that has to contain a whole phrase.
+    """
+    if not transcript.segments:
+        return None
+
+    raw = sarvam.chat_json(
+        POINT_SYSTEM,
+        f"Add words {position} this anchor: {anchor}\n\n"
+        f"Transcript:\n{transcript.numbered()}",
+        POINT_SCHEMA,
+        schema_name="InsertPoint",
+    )
+
+    try:
+        seg_id = int(raw["segment_id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not 0 <= seg_id < len(transcript.segments):
+        return None
+
+    segment = transcript.segments[seg_id]
+    confidence = float(raw.get("confidence") or 0.0)
+    anchor_text = str(raw.get("anchor_text") or "").strip() or anchor
+    position = str(raw.get("position") or position).lower()
+    if position not in ("after", "before"):
+        position = "after"
+
+    span = _find_anchor_words(segment, anchor_text)
+
+    # Confidence is advisory, not a verdict: if the quoted anchor really is in
+    # the segment we can place the splice exactly, whatever the model thought of
+    # its own answer. Only give up when it both doubts the match and we cannot
+    # corroborate it against the words.
+    if span is None and confidence <= 0:
+        return None
+
+    if span is not None:
+        first, last = span
+        when = segment.words[last].end if position == "after" else segment.words[first].start
+    else:
+        # The anchor didn't survive tokenisation — fall back to the segment edge,
+        # which is still a sentence boundary and so still a safe place to cut in.
+        log.warning("anchor %r not matched inside segment %d; using its edge",
+                    anchor_text, seg_id)
+        when = segment.end if position == "after" else segment.start
+
+    point = Point(
+        time=max(0.0, min(when, transcript.duration)),
+        anchor=anchor_text,
+        reason=str(raw.get("reason") or "").strip(),
+        confidence=confidence,
+        segment_id=seg_id,
+    )
+    log.info("insert point %.3fs (%s %r)", point.time, position, anchor_text)
+    return point
 
 
 def locate_clips(transcript: Transcript, query: str, *, max_clips: int = 3,

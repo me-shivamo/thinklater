@@ -215,7 +215,7 @@ def tts(text: str, language_code: str, speaker: str | None = None,
         text=text,
         language_code=config.to_tts_code(language_code),  # NB: not target_language_code
         model=config.TTS_MODEL,
-        speaker=speaker or config.TTS_SPEAKER,
+        speaker=config.resolve_speaker(speaker),
         pace=pace,
     )
     audios = getattr(resp, "audios", None) or []
