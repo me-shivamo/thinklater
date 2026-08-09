@@ -17,6 +17,7 @@
 import transcriptFixture from './fixtures/transcript.json'
 import resultFixture from './fixtures/result.json'
 import eventsRaw from './fixtures/events.jsonl?raw'
+import { planInstruction } from './utils/agent.js'
 
 export const USE_FIXTURES =
   String(import.meta.env.VITE_USE_FIXTURES ?? '1') !== '0'
@@ -95,6 +96,31 @@ export async function getResult(jobId) {
   return jsonFetch(`${API_BASE}/result/${encodeURIComponent(jobId)}`)
 }
 
+// ── Apply a manual edit (EDL) — pure ffmpeg cut+concat on the backend ────────
+// keepRanges is an ordered list of { start, end } (seconds) over the original
+// timeline. Returns { job_id }; the trimmed file is served by downloadUrl(job_id).
+// `effects` (optional) is a list of zoom windows already mapped onto the edited
+// output timeline: { start, end, scale } (seconds). The backend bakes them into
+// the render via ffmpeg after the cut+concat.
+export async function applyEdit(mediaId, keepRanges, effects = []) {
+  const keep_ranges = (keepRanges || []).map((r) => [r.start, r.end])
+  const fx = (effects || []).map((e) => ({
+    start: e.start,
+    end: e.end,
+    scale: e.scale,
+  }))
+  if (USE_FIXTURES) {
+    // No backend in demo mode — simulate a render and reuse the sample file.
+    await sleep(700)
+    return { job_id: 'edit_demo' }
+  }
+  return jsonFetch(`${API_BASE}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ media_id: mediaId, keep_ranges, effects: fx }),
+  })
+}
+
 // ── Download URL for the final file / SRT ────────────────────────────────────
 export function downloadUrl(jobId, type) {
   if (USE_FIXTURES) return '/sample.mp4'
@@ -167,6 +193,33 @@ function pollJob(jobId, { onEvent, onDone, onError }) {
   })()
   return () => {
     stop = true
+  }
+}
+
+// ── Offline agent: run an instruction against the loaded transcript ──────────
+// Fixtures mode only. Parses the instruction, searches the transcript, and
+// replays a synthesized ProgressEvent stream — then hands back the located
+// { clips, plan } via onDone so the UI behaves like a live run. Returns an
+// unsubscribe() function. onError(err) fires (before any events) when the
+// instruction can't be satisfied, e.g. no match in the transcript.
+export function runLocalInstruction({ instruction, segments, duration }, { onEvent, onDone, onError }) {
+  const spec = planInstruction({ instruction, segments, duration })
+  if (!spec.ok) {
+    onError?.(new Error(spec.error))
+    return () => {}
+  }
+  let cancelled = false
+  ;(async () => {
+    await sleep(300)
+    for (const evt of spec.events) {
+      if (cancelled) return
+      onEvent?.(evt)
+      await sleep(evt.stage === 'dub' ? 750 : 500)
+    }
+    if (!cancelled) onDone?.({ clips: spec.clips, plan: spec.plan })
+  })()
+  return () => {
+    cancelled = true
   }
 }
 

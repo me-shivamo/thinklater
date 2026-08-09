@@ -27,3 +27,4 @@ cache/
 media/
 job*/
 *.wav
+*.log

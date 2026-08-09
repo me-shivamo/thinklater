@@ -79,6 +79,18 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
+@dataclass
+class EditResult:
+    """Result of a manual EDL edit — shaped like a pipeline Result so it flows
+    through the existing ``/api/download`` (and ``/api/result``) plumbing."""
+
+    output: Path
+    srt: Path | None = None
+    clips: list = field(default_factory=list)
+    plan: Any = None
+    notes: list = field(default_factory=list)
+
+
 MEDIA: dict[str, MediaEntry] = {}
 JOBS: dict[str, Job] = {}
 
@@ -185,6 +197,35 @@ def _run_pipeline(job: Job, source: str, instruction: str) -> None:
             job.done = True
 
 
+def _apply_edit(
+    entry: MediaEntry,
+    ranges: list[tuple[float, float]],
+    effects: list[tuple[float, float, float]] | None = None,
+) -> Path:
+    """Cut each kept range, concat them, then bake any zoom windows.
+
+    Pure ffmpeg (``clipcraft.media.cut`` / ``concat`` / ``zoom``) — needs no
+    Sarvam key. ``effects`` are ``(start, end, scale)`` windows already expressed
+    over the trimmed output timeline; they only apply to video.
+    """
+    workdir = media.new_workdir("edit")
+    is_video = entry.info.is_video
+    ext = ".mp4" if is_video else ".mp3"
+    parts: list[Path] = []
+    for i, (start, end) in enumerate(ranges):
+        dest = workdir / f"part{i:03d}{ext}"
+        media.cut(entry.path, start, end, dest, is_video=is_video)
+        parts.append(dest)
+    out = workdir / f"edit{ext}"
+    media.concat(parts, out, is_video=is_video)  # concat() copies when len==1
+
+    if effects and is_video:
+        zoomed = workdir / f"edit-zoom{ext}"
+        media.zoom(out, effects, zoomed)
+        out = zoomed
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -265,7 +306,10 @@ async def get_transcript(media_id: str):
 
 @app.post("/api/instruct")
 async def instruct(request: Request) -> dict:
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001 - malformed body -> 400, not 500
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
     media_id = body.get("media_id")
     instruction = (body.get("instruction") or "").strip()
     if not media_id or not instruction:
@@ -387,3 +431,70 @@ def download(job_id: str, type: str | None = None):
         path = Path(res.output)
 
     return _file_response(path, media_type=_media_type(path), download_name=path.name)
+
+
+@app.post("/api/edit")
+async def edit(request: Request) -> dict:
+    """Apply a manual edit (EDL) with pure ffmpeg.
+
+    Body: ``{media_id, keep_ranges: [[start, end], ...]}`` — kept ranges over
+    the original timeline (seconds). Cuts each range and concatenates them, then
+    stores the output on a fresh job so ``GET /api/download/{job_id}`` serves it.
+    """
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001 - malformed body -> 400, not 500
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
+
+    media_id = body.get("media_id")
+    raw_ranges = body.get("keep_ranges") or []
+    raw_effects = body.get("effects") or []
+
+    entry = MEDIA.get(media_id)
+    if entry is None or not entry.path.exists():
+        raise HTTPException(status_code=404, detail="Unknown media_id")
+
+    dur = entry.info.duration
+    ranges: list[tuple[float, float]] = []
+    for pair in raw_ranges:
+        try:
+            start = max(0.0, min(float(pair[0]), dur))
+            end = max(0.0, min(float(pair[1]), dur))
+        except (TypeError, ValueError, IndexError):
+            continue
+        if end - start > 0.02:  # ignore slivers
+            ranges.append((start, end))
+
+    if not ranges:
+        raise HTTPException(
+            status_code=400,
+            detail="keep_ranges must contain at least one non-empty [start, end] pair.",
+        )
+
+    # Zoom windows (output-timeline seconds). Clamped and validated; scale > 1.
+    effects: list[tuple[float, float, float]] = []
+    for fx in raw_effects:
+        try:
+            start = max(0.0, float(fx["start"]))
+            end = max(0.0, float(fx["end"]))
+            scale = float(fx.get("scale", 1.0))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if end - start > 0.05 and scale > 1.001:
+            effects.append((start, end, round(scale, 4)))
+
+    try:
+        out = await asyncio.to_thread(_apply_edit, entry, ranges, effects)
+    except MediaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        log.exception("edit failed")
+        raise HTTPException(status_code=500, detail=f"Edit failed: {exc}") from exc
+
+    job_id = uuid.uuid4().hex[:12]
+    job = Job(id=job_id, media_id=media_id)
+    job.result = EditResult(output=out)
+    job.status = "done"
+    job.done = True
+    JOBS[job_id] = job
+    return {"job_id": job_id}
