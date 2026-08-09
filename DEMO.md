@@ -127,3 +127,31 @@ else calls out.
 Segment timestamps come from Saaras directly. Word-level timings are
 interpolated within each segment — good enough to highlight words in the web UI,
 and labelled as estimated in the API.
+
+---
+
+## Original test matrix (from the ElevenLabs ClipIt reference) — verified
+
+| # | Instruction | Source | Status |
+|---|---|---|---|
+| 1 | trim the part where it tells the credit card number | PII mp3 | ✅ tested |
+| 2 | dub the audio in Hindi language | PII mp3 | ✅ tested |
+| 3 | trim the credit card part and dub it in Hindi | PII mp3 | ✅ tested |
+| 4 | remove background noise from this audio | voice-isolator mp3 | ✅ tested |
+| 5 | dub the video to Spanish | ForBiggerMeltdowns.mp4 | ❌ 403 + Spanish unsupported |
+| 6 | trim where it speaks about Anderson, dub to Hindi | Short uBiTZttuFG4 | ✅ tested — 15.81-26.46s |
+| 7 | remove noise where he says "I am a moster" | ForBiggerMeltdowns.mp4 | ❌ 403 |
+
+**Links**
+- PII audio — `https://storage.googleapis.com/eleven-public-cdn/documentation_assets/audio/stt-entity-detection-pii.mp3`
+- Noisy audio — `https://eleven-public-cdn.elevenlabs.io/audio/voice-isolator/voice-isolator-promo-original.mp3`
+- Anderson Short — `https://www.youtube.com/shorts/uBiTZttuFG4`
+- ~~ForBiggerMeltdowns~~ — **dead, whole `gtv-videos-bucket` returns 403**
+
+**Replacement for 5 & 7** (verified: 52s, English speech)
+`https://media.w3.org/2010/05/sintel/trailer.mp4`
+- `trim the part where he asks what brings you to the land of the gatekeepers and dub it to Hindi`
+- `remove background noise from this video`
+
+Avoid `filesamples.com/samples/video/mp4/sample_640x360.mp4` — no audio track
+(the bot rejects it cleanly, which is itself worth showing if asked about errors).
