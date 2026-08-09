@@ -2,7 +2,7 @@
 
 This is the *only* backend surface the React web editor (``web/``) talks to. It
 implements the frozen §5 contract from ``Plan.md`` and does nothing more than
-adapt :mod:`clipcraft` <-> that contract:
+adapt :mod:`clipit` <-> that contract:
 
     POST /api/ingest             {url} | multipart file  -> {job_id, media_id}
     GET  /api/media/{media_id}   bytes (HTTP Range / 206) -> <video> source
@@ -14,7 +14,8 @@ adapt :mod:`clipcraft` <-> that contract:
     GET  /api/jobs/{job_id}      -> polling fallback {status, event}
 
 The engine is *not* reimplemented here; every endpoint calls into
-``clipcraft.pipeline`` / ``clipcraft.media`` / ``clipcraft.transcribe``. The
+``clipit.pipeline`` / ``clipit.media`` / ``clipit.transcribe`` — the same
+package the Telegram bot drives, so both surfaces stay in lockstep. The
 pipeline is a blocking generator, so ``/api/instruct`` runs it on a worker
 thread and buffers its events for the SSE and polling endpoints.
 """
@@ -25,6 +26,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,13 +35,14 @@ from typing import Any
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
-from clipcraft import media, pipeline
-from clipcraft.media import MediaError, MediaInfo
-from clipcraft.transcribe import transcribe
+from clipit import config, media, pipeline
+from clipit.media import MediaError, MediaInfo
+from clipit.transcribe import transcribe
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("clipcraft.server")
+log = logging.getLogger("clipit.server")
 
 app = FastAPI(title="ClipCraft backend", version="1.0")
 
@@ -65,6 +68,10 @@ class MediaEntry:
     path: Path
     workdir: Path
     info: MediaInfo
+    # Serialises transcription of *this* file. React StrictMode, a refresh, or a
+    # double-click otherwise fire two full STT runs at STT_MAX_WORKERS each; the
+    # second caller blocks here and then gets the cache entry the first wrote.
+    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 @dataclass
@@ -74,7 +81,8 @@ class Job:
     instruction: str = ""
     events: list[dict] = field(default_factory=list)   # serialized SSE payloads
     status: str = "running"                             # running | done | error
-    result: Any = None                                  # clipcraft.pipeline.Result
+    result: Any = None                                  # clipit.pipeline.Result
+    error: str | None = None                            # terminal error message
     done: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -102,6 +110,9 @@ STAGE_PCT: dict[str, int] = {
     "result": 100,
     "error": 100,
 }
+
+
+KEEPALIVE_SECONDS = 15.0      # SSE comment cadence while a stage runs silently
 
 
 def _pct_for(stage: str, status: str, prev: int) -> int:
@@ -145,7 +156,11 @@ def _run_pipeline(job: Job, source: str, instruction: str) -> None:
     """Worker thread: drive the blocking pipeline and buffer its events."""
     prev_pct = 0
     try:
-        for event in pipeline.run(source=source, instruction=instruction):
+        # dub_engine mirrors bot.py so CLIPIT_DUB_ENGINE moves both surfaces
+        # together — run()'s own default is the literal "auto", so omitting this
+        # would silently ignore the env var on the web side only.
+        for event in pipeline.run(source=source, instruction=instruction,
+                                  dub_engine=config.DUB_ENGINE):
             prev_pct = _pct_for(event.stage, event.status, prev_pct)
             payload = {
                 "stage": event.stage,
@@ -157,15 +172,23 @@ def _run_pipeline(job: Job, source: str, instruction: str) -> None:
             terminal = event.stage in ("done", "error") or "result" in event.data
             if terminal:
                 result = event.data.get("result")
+                failed = event.status == "error"
                 with job.lock:
                     if result is not None:
                         job.result = result
                     job.events.append(payload)
-                    # Emit the synthetic terminal the frontend waits for.
-                    job.events.append(
-                        {"stage": "result", "status": "done", "message": "Done", "pct": 100}
-                    )
-                    job.status = "error" if event.status == "error" else "done"
+                    # Emit the synthetic terminal the frontend waits for. It has
+                    # to carry the real outcome, or AgentPanel paints a green
+                    # "Finish ✓" on top of a job that actually failed.
+                    job.events.append({
+                        "stage": "result",
+                        "status": "error" if failed else "done",
+                        "message": event.message if failed else "Done",
+                        "pct": 100,
+                    })
+                    job.status = "error" if failed else "done"
+                    if failed:
+                        job.error = event.message
                     job.done = True
                 return
 
@@ -173,15 +196,16 @@ def _run_pipeline(job: Job, source: str, instruction: str) -> None:
                 job.events.append(payload)
     except Exception as exc:  # noqa: BLE001 - never let a worker thread die silently
         log.exception("pipeline worker crashed")
+        message = f"{type(exc).__name__}: {exc}"
         with job.lock:
             job.events.append(
-                {"stage": "error", "status": "error",
-                 "message": f"{type(exc).__name__}: {exc}", "pct": 100}
+                {"stage": "error", "status": "error", "message": message, "pct": 100}
             )
             job.events.append(
                 {"stage": "result", "status": "error", "message": "Failed", "pct": 100}
             )
             job.status = "error"
+            job.error = message
             job.done = True
 
 
@@ -244,8 +268,13 @@ async def get_transcript(media_id: str):
     if entry is None or not entry.path.exists():
         raise HTTPException(status_code=404, detail="Unknown media_id")
 
+    def _transcribe_once():
+        # One transcription per media file at a time; see MediaEntry.lock.
+        with entry.lock:
+            return transcribe(entry.path, use_cache=True)
+
     try:
-        transcript = await asyncio.to_thread(transcribe, entry.path, use_cache=True)
+        transcript = await asyncio.to_thread(_transcribe_once)
     except Exception as exc:  # noqa: BLE001 - surface a clean JSON error, not a 500 trace
         log.warning("transcription failed for %s: %s", media_id, exc)
         return JSONResponse(
@@ -256,10 +285,9 @@ async def get_transcript(media_id: str):
     return {
         "language": transcript.language,
         "duration": entry.info.duration,  # authoritative duration from ingest probe
-        "segments": [
-            {"id": s.id, "start": s.start, "end": s.end, "text": s.text}
-            for s in transcript.segments
-        ],
+        # Segment.to_dict() is a superset of the frozen §5 shape: it adds the
+        # interpolated per-word timings, which the UI can use for highlighting.
+        "segments": [s.to_dict() for s in transcript.segments],
     }
 
 
@@ -296,6 +324,7 @@ async def events(job_id: str):
 
     async def stream():
         index = 0
+        last_sent = time.monotonic()
         while True:
             with job.lock:
                 pending = job.events[index:]
@@ -303,8 +332,17 @@ async def events(job_id: str):
                 finished = job.done
             for payload in pending:
                 yield f"data: {json.dumps(payload)}\n\n"
+            if pending:
+                last_sent = time.monotonic()
             if finished and not pending:
                 break
+            # Sarvam Dub polls for up to DUB_TIMEOUT_SECONDS (600) and the
+            # pipeline yields nothing for the whole wait. An SSE comment keeps
+            # the connection demonstrably alive through it; EventSource ignores
+            # comment lines, so no frontend handling is needed.
+            elif time.monotonic() - last_sent >= KEEPALIVE_SECONDS:
+                yield ": keepalive\n\n"
+                last_sent = time.monotonic()
             await asyncio.sleep(0.25)
 
     return StreamingResponse(
@@ -335,9 +373,16 @@ def result(job_id: str) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     if job.result is None:
-        if job.done:
-            raise HTTPException(status_code=409, detail="Job finished without a result.")
-        raise HTTPException(status_code=425, detail="Job still running.")
+        if not job.done:
+            raise HTTPException(status_code=425, detail="Job still running.")
+        # A crash before the pipeline produced a Result. Still answer 200 so the
+        # UI can render the reason instead of a bare HTTP error.
+        return {
+            "status": "error",
+            "error": job.error or "The job finished without producing a result.",
+            "clips": [], "output_url": None, "srt_url": None,
+            "plan": None, "notes": [],
+        }
 
     res = job.result
 
@@ -357,21 +402,31 @@ def result(job_id: str) -> dict:
         plan_payload = {
             "reasoning": res.plan.reasoning,
             "ops": res.plan.ops,
+            "target_language": res.plan.target_language,
             "unsupported_language": res.plan.unsupported_language,
         }
 
     has_srt = bool(res.srt) and Path(res.srt).exists()
     return {
+        # A failed job still carries notes/plan/partial clips explaining *why*,
+        # so this stays a 200 and the UI branches on `status`.
+        "status": job.status,
+        "error": job.error,
         "clips": clips,
         "output_url": f"/api/download/{job_id}" if res.output else None,
         "srt_url": f"/api/download/{job_id}?type=srt" if has_srt else None,
         "plan": plan_payload,
         "notes": list(getattr(res, "notes", []) or []),
+        "kind": res.kind.value,
+        "dub_engine": res.dub_engine,
+        "voice_cloned": res.voice_cloned,
     }
 
 
 @app.get("/api/download/{job_id}")
-def download(job_id: str, type: str | None = None):
+def download(job_id: str, type: str | None = None, dl: int = 0):
+    """Serve the render. Inline by default so a <video> can play it; ``dl=1``
+    attaches a filename for the Export button."""
     job = JOBS.get(job_id)
     if job is None or job.result is None:
         raise HTTPException(status_code=404, detail="No result for this job_id")
@@ -386,4 +441,19 @@ def download(job_id: str, type: str | None = None):
             raise HTTPException(status_code=404, detail="No output for this job")
         path = Path(res.output)
 
-    return _file_response(path, media_type=_media_type(path), download_name=path.name)
+    # Passing filename= makes Starlette send Content-Disposition: attachment,
+    # which stops the browser playing it in the preview player.
+    return _file_response(path, media_type=_media_type(path),
+                          download_name=path.name if dl else None)
+
+
+# ---------------------------------------------------------------------------
+# Built web bundle, if present. Must stay below every /api route so it only
+# catches what they don't. A no-op during `npm run dev` (Vite proxies instead).
+# ---------------------------------------------------------------------------
+_DIST = Path(__file__).resolve().parent / "web" / "dist"
+if _DIST.is_dir():
+    app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="web")
+    log.info("serving built web bundle from %s", _DIST)
+else:
+    log.info("no web/dist — run `npm run build` in web/ to serve the UI from :8000")
