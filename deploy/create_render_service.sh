@@ -60,8 +60,12 @@ for row in json.load(sys.stdin):
 
 if [ -n "$EXISTING_ID" ]; then
     say "Service '$SERVICE_NAME' already exists: $EXISTING_ID"
+    echo "  dashboard: https://dashboard.render.com/web/$EXISTING_ID"
+    echo
     echo "Trigger a redeploy with:"
-    echo "  curl -X POST ${auth[*]} $API/services/$EXISTING_ID/deploys -d '{}'"
+    # Never interpolate "${auth[@]}" into printed text — it carries the bearer token.
+    echo "  curl -X POST -H \"Authorization: Bearer \$RENDER_API_KEY\" \\"
+    echo "       $API/services/$EXISTING_ID/deploys -d '{}'"
     exit 0
 fi
 
