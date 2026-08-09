@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   USE_FIXTURES,
+  applyEdit,
   downloadUrl,
   getResult,
   getTranscript,
@@ -8,10 +9,15 @@ import {
   instruct,
   mediaUrl,
   outputStreamUrl,
+  runLocalInstruction,
   subscribeEvents,
 } from './api.js'
-import { synthPeaks } from './utils/format.js'
-import InstructionBar from './components/InstructionBar.jsx'
+import { formatTime, synthPeaks } from './utils/format.js'
+import { isKept, mapToOutputTime, nextKeptTime } from './utils/edl.js'
+import { parseCommand, zoomScaleAt } from './utils/commands.js'
+import { useEDL } from './hooks/useEDL.js'
+import TopBar from './components/TopBar.jsx'
+import CommandBar from './components/CommandBar.jsx'
 import VideoPlayer from './components/VideoPlayer.jsx'
 import Timeline from './components/Timeline.jsx'
 import TranscriptPanel from './components/TranscriptPanel.jsx'
@@ -55,19 +61,38 @@ export default function App() {
   const [preview, setPreview] = useState('source')
   const [toast, setToast] = useState(null)
 
+  // Manual-edit (EDL) render state.
+  const [editing, setEditing] = useState(false)
+  const [editReady, setEditReady] = useState(false)
+  const [editUrl, setEditUrl] = useState(null)
+
+  // Zoom effects applied via the timestamp command bar. Each is
+  // { id, type: 'in'|'out', start, end, scale } over the ORIGINAL timeline.
+  const [effects, setEffects] = useState([])
+
   const unsubRef = useRef(null)
   // The loadedmetadata listener below is registered once per transcript, so it
   // would otherwise close over a stale `preview`.
   const previewRef = useRef('source')
   previewRef.current = preview
 
-  // Lift playback state off the shared <video> element.
+  // The editor's timeline basis. Always the SOURCE duration, never the player's
+  // — the EDL and the zoom windows are both expressed over the original
+  // timeline, so previewing a (much shorter) render must not rescale the
+  // Timeline or reset the edit history.
+  const timelineDuration = sourceDuration || transcript?.duration || duration || 0
+  const edl = useEDL(timelineDuration)
+
+  // Lift playback state off the shared <video> element. Subscribe when the
+  // element/source is ready (not when the transcript arrives) so the readout
+  // reflects real playback immediately, and seed from the element in case
+  // metadata already loaded before we attached.
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
     const onTime = () => setCurrentTime(v.currentTime)
     const onMeta = () => {
-      if (!v.duration) return
+      if (!Number.isFinite(v.duration) || !v.duration) return
       setDuration(v.duration)
       if (previewRef.current === 'source') setSourceDuration(v.duration)
     }
@@ -75,15 +100,20 @@ export default function App() {
     const onPause = () => setPlaying(false)
     v.addEventListener('timeupdate', onTime)
     v.addEventListener('loadedmetadata', onMeta)
+    v.addEventListener('durationchange', onMeta)
     v.addEventListener('play', onPlay)
     v.addEventListener('pause', onPause)
+    setCurrentTime(v.currentTime)
+    if (Number.isFinite(v.duration)) setDuration(v.duration)
+    setPlaying(!v.paused)
     return () => {
       v.removeEventListener('timeupdate', onTime)
       v.removeEventListener('loadedmetadata', onMeta)
+      v.removeEventListener('durationchange', onMeta)
       v.removeEventListener('play', onPlay)
       v.removeEventListener('pause', onPause)
     }
-  }, [transcript])
+  }, [mediaSrc])
 
   useEffect(
     () => () => {
@@ -100,12 +130,12 @@ export default function App() {
     () => transcript?.peaks ?? synthPeaks(sourceDuration || 1, segments),
     [transcript, sourceDuration, segments],
   )
-  const timelineDuration = sourceDuration || transcript?.duration || 0
   const playerSrc = preview === 'result' && outputUrl ? outputStreamUrl(jobId) : mediaSrc
 
   const handleIngest = useCallback(async ({ file, url }) => {
     setIngestBusy(true)
     setIngestError(null)
+
     try {
       const { media_id } = await ingest({ file, url })
 
@@ -138,8 +168,9 @@ export default function App() {
 
       // Show the editor as soon as the media is playable. Transcription is a
       // full STT run — awaiting it here would park the user on a dead spinner
-      // for minutes. InstructionBar stays disabled until it lands, which also
+      // for minutes. The agent input stays disabled until it lands, which also
       // stops a second transcribe() racing the first.
+      setEffects([])
       setMediaId(media_id)
       setMediaSrc(src)
       setIngestBusy(false)
@@ -195,6 +226,64 @@ export default function App() {
     )
   }, [])
 
+  // Playback preview honors the EDL: while playing, skip over removed ranges by
+  // seeking across the gap; pause at the end once nothing kept remains.
+  useEffect(() => {
+    if (!playing || !edl.isEdited) return
+    const v = videoRef.current
+    if (!v) return
+    if (isKept(edl.keepRanges, currentTime)) return
+    const next = nextKeptTime(edl.keepRanges, currentTime)
+    if (next != null && next > currentTime + 0.01) {
+      v.currentTime = next
+      setCurrentTime(next)
+    } else if (next == null) {
+      v.pause()
+      const last = edl.keepRanges[edl.keepRanges.length - 1]
+      if (last) {
+        v.currentTime = last.end
+        setCurrentTime(last.end)
+      }
+    }
+  }, [currentTime, playing, edl.isEdited, edl.keepRanges])
+
+  // A fresh set of edits invalidates any previously rendered trimmed file.
+  useEffect(() => {
+    setEditReady(false)
+    setEditUrl(null)
+  }, [edl.keepRanges, effects])
+
+  const hasEdits = edl.isEdited || effects.length > 0
+
+  const onRenderEdit = useCallback(async () => {
+    if (!hasEdits || !mediaId) return
+    setEditing(true)
+    try {
+      // Zoom windows are stored over the ORIGINAL timeline; reposition them onto
+      // the trimmed output so ffmpeg applies them at the right moment.
+      const mappedEffects = effects
+        .map((fx) => ({
+          scale: fx.scale,
+          start: mapToOutputTime(edl.keepRanges, fx.start),
+          end: mapToOutputTime(edl.keepRanges, fx.end),
+        }))
+        .filter((fx) => fx.end - fx.start > 0.05)
+      const { job_id } = await applyEdit(mediaId, edl.keepRanges, mappedEffects)
+      setEditUrl(downloadUrl(job_id))
+      setEditReady(true)
+      if (USE_FIXTURES) {
+        setToast({
+          text: 'Demo mode: the edit is simulated — the bundled sample stands in for the trimmed render.',
+          kind: 'info',
+        })
+      }
+    } catch (err) {
+      setToast({ text: err.message || 'Failed to render the edit.', kind: 'error' })
+    } finally {
+      setEditing(false)
+    }
+  }, [hasEdits, edl.keepRanges, effects, mediaId])
+
   const runInstruction = useCallback(
     async (instruction) => {
       if (!mediaId) return
@@ -210,6 +299,30 @@ export default function App() {
       setResultReady(false)
       setPreview('source')
       setRunning(true)
+
+      // Offline mode: run a transcript-aware client agent so instructions act on
+      // the loaded transcript instead of replaying a canned result.
+      if (USE_FIXTURES) {
+        unsubRef.current = runLocalInstruction(
+          { instruction, segments, duration: timelineDuration },
+          {
+            onEvent: (evt) => setEvents((prev) => [...prev, evt]),
+            onDone: ({ clips: found, plan: builtPlan }) => {
+              setClips(found || [])
+              setPlan(builtPlan || null)
+              setResultReady(true)
+              setRunning(false)
+              if (builtPlan?.note) setToast(builtPlan.note)
+            },
+            onError: (err) => {
+              setToast(err.message || 'Could not run that instruction.')
+              setRunning(false)
+            },
+          },
+        )
+        return
+      }
+
       try {
         const { job_id } = await instruct(mediaId, instruction)
         setJobId(job_id)
@@ -265,7 +378,56 @@ export default function App() {
         setRunning(false)
       }
     },
-    [mediaId],
+    [mediaId, segments, timelineDuration],
+  )
+
+  // Timestamp + instruction command: cuts feed the EDL, zooms become live
+  // preview effects. Returns an error string on failure (shown inline), or
+  // null on success so the CommandBar can clear its input.
+  const handleCommand = useCallback(
+    (text) => {
+      const res = parseCommand(text, { currentTime, duration: timelineDuration })
+      if (!res.ok) return res.error
+
+      if (res.action === 'cut') {
+        edl.deleteRange(res.start, res.end)
+        seek(res.start)
+        setToast({
+          text: `Cut ${formatTime(res.start)}–${formatTime(res.end)} — render to export the trim.`,
+          kind: 'info',
+        })
+        return null
+      }
+
+      // zoom
+      setEffects((prev) => [
+        ...prev,
+        {
+          id: `fx_${Date.now().toString(36)}`,
+          type: res.type,
+          start: res.start,
+          end: res.end,
+          scale: res.scale,
+        },
+      ])
+      seek(res.start)
+      setToast({
+        text: `${res.label} ${res.scale.toFixed(1)}x from ${formatTime(res.start)} to ${formatTime(res.end)} — press play to preview.`,
+        kind: 'info',
+      })
+      return null
+    },
+    [currentTime, timelineDuration, edl, seek],
+  )
+
+  const removeEffect = useCallback((id) => {
+    setEffects((prev) => prev.filter((fx) => fx.id !== id))
+  }, [])
+
+  // Live zoom for the player: the strongest active effect at the playhead.
+  const zoomScale = useMemo(
+    () => zoomScaleAt(effects, currentTime),
+    [effects, currentTime],
   )
 
   if (!mediaId) {
@@ -287,11 +449,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-zinc-950 text-zinc-200">
-      <InstructionBar
-        onRun={runInstruction}
-        disabled={!transcript}
-        running={running}
-      />
+      <TopBar />
 
       {/* Main editor area: player left, transcript + agent right */}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[1.6fr_1fr]">
@@ -306,6 +464,7 @@ export default function App() {
             preview={preview}
             onPreviewChange={setPreview}
             hasResult={!!outputUrl}
+            zoomScale={zoomScale}
           />
         </div>
 
@@ -324,9 +483,21 @@ export default function App() {
               reasoning={plan?.reasoning}
               running={running}
               notes={notes}
+              onRun={runInstruction}
+              disabled={!transcript}
             />
           </div>
         </div>
+      </div>
+
+      {/* Timestamp + instruction command bar */}
+      <div className="px-3 pb-2">
+        <CommandBar
+          onCommand={handleCommand}
+          disabled={!mediaId}
+          effects={effects}
+          onRemoveEffect={removeEffect}
+        />
       </div>
 
       {/* Timeline */}
@@ -342,6 +513,7 @@ export default function App() {
           currentTime={currentTime}
           onClipChange={onClipChange}
           onSeek={seek}
+          edl={edl}
         />
       </div>
 
@@ -362,6 +534,11 @@ export default function App() {
           outputUrl={outputUrl ? downloadUrl(jobId) : null}
           srtUrl={srtUrl ? downloadUrl(jobId, 'srt') : null}
           ready={resultReady}
+          edited={hasEdits}
+          editing={editing}
+          editReady={editReady}
+          editUrl={editUrl}
+          onRenderEdit={onRenderEdit}
         />
       </div>
 

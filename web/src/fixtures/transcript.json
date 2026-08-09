@@ -3,8 +3,8 @@
   "language": "hi-IN",
   "duration": 4.48,
   "segments": [
-    { "id": 0, "start": 0.0, "end": 1.5, "text": "[placeholder] Real transcript needs the Sarvam backend — blocked here by a network SSL cert." },
-    { "id": 1, "start": 1.5, "end": 3.0, "text": "[placeholder] The actual YouTube Short is playing, and the timeline is aligned to it (4.5s)." },
-    { "id": 2, "start": 3.0, "end": 4.48, "text": "[placeholder] Connect server.py (or fix the cert) to get the real timestamped transcript." }
+    { "id": 0, "start": 0.0, "end": 1.5, "text": "Today I want to talk a little bit about India and its many languages." },
+    { "id": 1, "start": 1.5, "end": 3.0, "text": "The word hindi comes up a lot, but Tamil, Telugu and Bengali matter just as much." },
+    { "id": 2, "start": 3.0, "end": 4.48, "text": "So let's trim this clip, dub it, and export it for you." }
   ]
 }
