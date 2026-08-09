@@ -1,0 +1,23 @@
+{
+  "clips": [
+    {
+      "start": 0.8,
+      "end": 3.2,
+      "reason": "Example match region on the real Short (stand-in for a located clip).",
+      "confidence": 0.9,
+      "segment_ids": [0, 1]
+    }
+  ],
+  "output_url": "/api/download/job_demo",
+  "srt_url": "/api/download/job_demo?type=srt",
+  "plan": {
+    "reasoning": "Demo plan against the downloaded YouTube Short: locate a segment, trim it, dub to Hindi, and export.",
+    "ops": [
+      { "op": "find", "args": { "query": "the funny bit", "max_clips": 2 } },
+      { "op": "trim", "args": { "padding_seconds": 0.2 } },
+      { "op": "dub", "args": { "target_language_code": "hi-IN", "voice_cloning": true } },
+      { "op": "export", "args": {} }
+    ],
+    "unsupported_language": null
+  }
+}

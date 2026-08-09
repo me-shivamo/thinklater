@@ -1,0 +1,10 @@
+{
+  "media_id": "sample",
+  "language": "hi-IN",
+  "duration": 4.48,
+  "segments": [
+    { "id": 0, "start": 0.0, "end": 1.5, "text": "[placeholder] Real transcript needs the Sarvam backend — blocked here by a network SSL cert." },
+    { "id": 1, "start": 1.5, "end": 3.0, "text": "[placeholder] The actual YouTube Short is playing, and the timeline is aligned to it (4.5s)." },
+    { "id": 2, "start": 3.0, "end": 4.48, "text": "[placeholder] Connect server.py (or fix the cert) to get the real timestamped transcript." }
+  ]
+}
