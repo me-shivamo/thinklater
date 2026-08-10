@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 <div align="center">
+=======
+# 🎬 thinklater — Natural-Language Video Editor Agent
+>>>>>>> Stashed changes
 
 # 🎬 ClipIt
 
@@ -308,6 +312,7 @@ clipit/
 ├── dubbing.py      Sarvam Dub lifecycle + local TTS fallback
 └── pipeline.py     orchestrator; streams ProgressEvent
 
+<<<<<<< Updated upstream
 server.py           FastAPI + SSE adapter, serves web/dist at /
 bot.py              Telegram bot
 cli.py              CLI
@@ -327,6 +332,13 @@ save you a day.
   size is your timestamp resolution**. ClipIt sizes chunks adaptively (2.5–15s) for
   precision rather than packing them to the 30s API ceiling.
 - **`chat.completions()` doesn't expose `response_format`** in `sarvamai` 0.1.30, even
+=======
+- **Sarvam returns exactly one timestamp span per STT request** (both `saaras:v3`
+  and `v4`). Chunk-level timestamps are *per request*, not per phrase — so your
+  chunk size **is** your timestamp resolution. thinklater sizes chunks adaptively
+  (4–18s) for precision rather than packing them to the 30s API ceiling.
+- **`chat.completions()` doesn't expose `response_format`** in `sarvamai` 0.1.30,
+>>>>>>> Stashed changes
   though the API supports it. Inject it via
   `request_options={"additional_body_parameters": {...}}`.
 - **`sarvam-translate:v1` accepts `mode="formal"` only**, and rejects
