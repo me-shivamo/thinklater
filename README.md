@@ -4,13 +4,13 @@
 # 🎬 thinklater — Natural-Language Video Editor Agent
 >>>>>>> Stashed changes
 
-# 🎬 ClipIt
+# 🎬 thinklater
 
 ### Edit audio and video by describing the scene. Never touch a timestamp.
 
 **"Trim the part where he talks about India and dub it in Hindi."**
 
-That sentence is the entire interface. ClipIt finds the moment, cuts it, cleans it,
+That sentence is the entire interface. thinklater finds the moment, cuts it, cleans it,
 dubs it into an Indian language — and tells you *why* it picked that segment.
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -21,6 +21,12 @@ dubs it into an Indian language — and tells you *why* it picked that segment.
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 
 [Quick start](#-quick-start) · [How it works](#-how-it-works) · [API](#-http-api) · [Contributing](#-contributing) · [Field notes](#-field-notes-things-the-docs-dont-tell-you)
+
+<br/>
+
+<img src="docs/screenshot.png" alt="The thinklater web editor: one sentence in the instruction bar, and the agent plans find → trim → dub → export while the transcript, match confidence and timeline update live" width="100%">
+
+<sub><i>One sentence in. The agent plans <code>find → trim → dub → export</code>, streams each stage as it runs,<br/>and hands back a dubbed clip with the reason it chose those 3.4 seconds.</i></sub>
 
 </div>
 
@@ -35,7 +41,7 @@ you already remember perfectly well, and converting it into two numbers.
 The creative intent — *"the bit where she reads out her card number"* — was clear from
 the start. The timestamps were never the point. They were just the price of admission.
 
-ClipIt removes them. You describe the scene; the agent reads a timestamped transcript,
+thinklater removes them. You describe the scene; the agent reads a timestamped transcript,
 reasons about it, plans a chain of operations, and executes it. Nothing is
 keyword-matched: ask for *"the part where she introduces herself"* and it works, because
 no rule was ever written for *introduces herself*.
@@ -158,7 +164,7 @@ talks to one origin — which is what makes SSE and HTTP Range work without CORS
 python bot.py
 ```
 
-Wait for `ClipIt bot is up.`, then send it a link and an instruction **in one message**:
+Wait for `thinklater bot is up.`, then send it a link and an instruction **in one message**:
 
 ```
 https://media.w3.org/2010/05/sintel/trailer.mp4 remove background noise from this video
@@ -177,11 +183,11 @@ tail -f work/bot.log
 <summary><b>🐳 Docker</b> — all three surfaces in one container</summary>
 
 ```bash
-docker build -t clipit .
+docker build -t thinklater .
 docker run -p 8000:8000 \
   -e SARVAM_API_KEY=sk_xxx \
   -e TELEGRAM_BOT_TOKEN=123456:ABC \
-  clipit
+  thinklater
 ```
 
 Stage 1 builds the Vite bundle with Node 22; stage 2 is Python 3.12 + ffmpeg and copies
@@ -238,7 +244,7 @@ flowchart TD
 ffmpeg does the cutting. Nothing else calls out.
 
 Language coverage differs across all four APIs — so every supported set is mapped
-explicitly in `clipit/config.py`, and unsupported requests fail with **the list of
+explicitly in `thinklater/config.py`, and unsupported requests fail with **the list of
 languages that would have worked**, rather than silently.
 
 ### Measured
@@ -287,23 +293,30 @@ buffers its events for both the SSE and polling endpoints.
 
 ## ⚙️ Configuration
 
-1. **`denoise` is hoisted before transcription** when the plan also needs `find` —
-   cleaner audio transcribes better, and one filter pass serves both.
-2. **Transcription is skipped entirely** for whole-file dubs; Sarvam Dub
-   transcribes internally.
-3. **Trim always happens before dub** — dub cost and latency scale with output
-   length.
-4. **`insert` is hoisted ahead of everything** so it runs against the media the
-   transcript actually describes. Later ops are re-timed through
-   `_shift_for_inserts`, and segments the insertion lands inside are split at
-   that point so a following dub doesn't talk over the new words.
+| Variable | Default | Purpose |
+|---|---|---|
+| `SARVAM_API_KEY` | — | **Required.** All five Sarvam APIs. |
+| `TELEGRAM_BOT_TOKEN` | — | Required only for the bot. |
+| `THINKLATER_DUB_ENGINE` | `auto` | `auto` (Sarvam Dub, falls back to TTS) · `sarvam` (fail loudly) · `manual` (local, ~10x faster, no cloning) |
+| `THINKLATER_STT_MODEL` | `saaras:v3` | or `saaras:v4` |
+| `THINKLATER_REASONING_EFFORT` | `low` | LLM latency vs depth |
+| `THINKLATER_TTS_SPEAKER` | `shubh` | Bulbul voice for `insert` and the local dub path |
+| `THINKLATER_INSERT_MOTION` | `1` | `0` freezes a frame at the insert point instead of slowing a window |
+| `THINKLATER_RUN_BOT` | `1` | `0` disables the bot inside the container |
+
+Web (`web/.env`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_BACKEND_ORIGIN` | `http://localhost:8000` | Where `server.py` runs |
+| `VITE_USE_FIXTURES` | `0` | `1` runs the whole UI offline on static fixtures |
 
 ---
 
 ## 📁 Layout
 
 ```
-clipit/
+thinklater/
 ├── config.py       model ids, per-API language tables, limits, ffmpeg discovery
 ├── sarvam.py       API wrappers, retry/backoff, JSON-schema chat
 ├── media.py        ingest (URL / yt-dlp / file), ffmpeg ops, silence chunking
@@ -329,7 +342,7 @@ save you a day.
 
 - **Sarvam returns exactly one timestamp span per STT request** — on both `saaras:v3`
   and `v4`. Chunk-level timestamps are *per request*, not per phrase, so **your chunk
-  size is your timestamp resolution**. ClipIt sizes chunks adaptively (2.5–15s) for
+  size is your timestamp resolution**. thinklater sizes chunks adaptively (2.5–15s) for
   precision rather than packing them to the 30s API ceiling.
 - **`chat.completions()` doesn't expose `response_format`** in `sarvamai` 0.1.30, even
 =======
@@ -399,8 +412,8 @@ shows up in the editor for free.**
 ### How to contribute
 
 1. **Fork** and create a branch: `git checkout -b feat/my-op`
-2. **Build something** — for a new op, add it to `KNOWN_OPS` in `clipit/agent.py`, teach
-   the planner schema about it, and implement it in `clipit/pipeline.py`
+2. **Build something** — for a new op, add it to `KNOWN_OPS` in `thinklater/agent.py`, teach
+   the planner schema about it, and implement it in `thinklater/pipeline.py`
 3. **Try it end to end:** `python cli.py -v -i <file> -q "<your instruction>"`
 4. **Open a PR** describing the instruction you can now say that you couldn't before
 
@@ -430,7 +443,7 @@ Stated up front, because finding these yourself is annoying:
 - **Sources are capped at 15 minutes** (`MAX_INPUT_SECONDS`) to keep cost and latency sane.
 - **Server job state is in-memory** — a restart loses ingested media and job results.
 - **Sarvam Dub takes 2–5 minutes.** That's the server-side job, not this code. Use
-  `CLIPIT_DUB_ENGINE=manual` when you'd rather have speed than voice cloning.
+  `THINKLATER_DUB_ENGINE=manual` when you'd rather have speed than voice cloning.
 
 ---
 
@@ -456,7 +469,7 @@ Stated up front, because finding these yourself is annoying:
 
 **Built on [Sarvam AI](https://www.sarvam.ai/).**
 
-If ClipIt saved you a scrub through a timeline, ⭐ the repo — and tell us the sentence you
+If thinklater saved you a scrub through a timeline, ⭐ the repo — and tell us the sentence you
 wish it understood.
 
 </div>

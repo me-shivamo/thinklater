@@ -1,6 +1,6 @@
 # ▶️ RUN THIS
 
-Everything you need to start ClipIt and demo it. Copy-paste, top to bottom.
+Everything you need to start thinklater and demo it. Copy-paste, top to bottom.
 
 Bot: **@clip_craft_sarvam_bot**
 
@@ -9,12 +9,12 @@ Bot: **@clip_craft_sarvam_bot**
 ## 1. Start it
 
 ```bash
-cd ~/Sarvam/ClipIt
+cd ~/Sarvam/thinklater
 source .venv/bin/activate
 python bot.py
 ```
 
-Wait for `ClipIt bot is up. Talk to it on Telegram.` — then open Telegram.
+Wait for `thinklater bot is up. Talk to it on Telegram.` — then open Telegram.
 
 **Keep it running after you close the terminal:**
 ```bash
@@ -123,7 +123,7 @@ https://storage.googleapis.com/eleven-public-cdn/documentation_assets/audio/stt-
 
 > The inserted word is a **preset Bulbul voice**, not the speaker's — Sarvam has
 > no standalone cloning API. It reads as a deliberate edit, not a seamless one.
-> Pick the voice with `--speaker` (CLI) or `CLIPIT_TTS_SPEAKER` (bot); `vijay`
+> Pick the voice with `--speaker` (CLI) or `THINKLATER_TTS_SPEAKER` (bot); `vijay`
 > is tighter than the `shubh` default for single words.
 
 **Sintel trailer** (English, 52s)
@@ -152,7 +152,7 @@ Sarvam Dub is a server-side job: **~285s**, but real speaker voice cloning.
 Local TTS is **~24s**, no cloning.
 
 ```bash
-echo 'CLIPIT_DUB_ENGINE=manual' >> .env
+echo 'THINKLATER_DUB_ENGINE=manual' >> .env
 pkill -f "python bot.py" && setsid nohup .venv/bin/python bot.py > work/bot.log 2>&1 < /dev/null &
 ```
 
@@ -227,3 +227,48 @@ https://www.youtube.com/shorts/uBiTZttuFG4 remove the background noise from this
 
 
 KNOWN_OPS = ("find", "trim", "denoise", "insert", "translate", "dub", "concat", "export")
+
+---
+
+## Case 7 — "I am a moster" (the misspelled-quote test)
+
+The original input **cannot be used** — its video is dead:
+
+```
+❌ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+   403 on every variant (https, http, storage.googleapis.com, mirrors)
+```
+
+**Use this instead — verified working:**
+
+```
+https://media.w3.org/2010/05/sintel/trailer.mp4 Remove background noise from this video from the part where he says 'I have been alon for as long as I can rember'
+```
+→ `find -> denoise -> trim` · match **41.2s - 44.5s** · ~35s
+
+The real line is *"I've been alone for as long as I can remember"* — **alon** and
+**rember** are misspelled on purpose. It still lands on the right 3 seconds,
+which is the whole point of the test: matching is semantic, not string equality.
+
+Watch the log: the plan says `find -> denoise -> trim`, but it prints
+*"Noise removed (before transcription)"* — the executor hoists denoise ahead of
+transcription so one filter pass improves both the transcript and the output.
+
+**Same test on the Anderson clip:**
+```
+https://www.youtube.com/shorts/uBiTZttuFG4 remove background noise from the part where he says 'the deteriorating condishuns by the minute'
+```
+
+
+KNOWN_OPS = ("find", "trim", "denoise", "translate", "dub", "concat", "export")
+
+https://media.w3.org/2010/05/sintel/trailer.mp4 trim the part where he asks what brings you to the land of the gatekeepers and dub it to Hindi
+
+
+https://media.w3.org/2010/05/sintel/trailer.mp4 remove background noise from this video
+
+
+REMOVE BACKGROUND NOISE FROM THIS VIDEO FROM THE PART WHERE HE SAYS 'I AM A MOSTER' USING THINKLATER
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+KNOWN_OPS = ("find", "trim", "denoise", "translate", "dub", "concat", "export")
