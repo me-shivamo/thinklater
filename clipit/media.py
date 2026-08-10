@@ -429,49 +429,13 @@ def _held_frame_clip(source: Path, when: float, audio: Path, dest: Path) -> Path
     return dest
 
 
-def _slowed_clip(source: Path, at: float, window: float, audio: Path,
-                 dest: Path) -> Path:
-    """A slowed stretch of ``source`` that absorbs ``audio``'s extra duration.
-
-    ``window`` seconds of picture starting at ``at`` are stretched to
-    ``window + len(audio)`` so the video keeps moving instead of freezing. The
-    segment's audio is the inserted words followed by the window's original
-    audio, which means the picture drifts slightly ahead of the voice during the
-    stretch and re-syncs exactly when it ends.
-    """
-    width, height, fps = video_params(source)
-    rate, channels = audio_params(source)
-    extra = duration_of(audio)
-    factor = (window + extra) / window
-
-    # setpts alone lengthens the segment without adding frames, which reads as
-    # judder. Re-timing to the source fps duplicates frames so the slow section
-    # still plays smoothly and concat can join it without a re-encode.
-    graph = (
-        f"[0:v]setpts=PTS*{factor:.6f},fps={fps:.5f},"
-        f"scale={width}:{height},setsar=1[v];"
-        f"[1:a]aformat=sample_rates={rate}:channel_layouts="
-        f"{'mono' if channels == 1 else 'stereo'}[ins];"
-        f"[0:a]aformat=sample_rates={rate}:channel_layouts="
-        f"{'mono' if channels == 1 else 'stereo'}[orig];"
-        f"[ins][orig]concat=n=2:v=0:a=1[a]"
-    )
-    ffmpeg("-ss", f"{at:.3f}", "-t", f"{window:.3f}", "-i", source, "-i", audio,
-           "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
-           "-pix_fmt", "yuv420p", "-r", f"{fps:.5f}",
-           "-c:a", "aac", "-b:a", "128k", "-ar", str(rate), "-ac", str(channels),
-           "-movflags", "+faststart", "-loglevel", "error", dest)
-    return dest
-
-
 def splice(path: Path, at: float, clip: Path, dest: Path, *, is_video: bool) -> Path:
     """Insert ``clip``'s audio into ``path`` at ``at`` seconds.
 
-    Video gains time rather than losing sync. By default the picture around the
-    insertion point is *slowed* so it keeps moving; a held frame is used only
-    when there isn't enough footage left to stretch. Shifting the audio instead
-    would desync the entire remainder of the video.
+    Video gains time rather than losing sync: the frame at the insertion point
+    is held for exactly the length of the inserted audio, so everything after it
+    stays aligned with the picture. Shifting the audio instead would desync the
+    entire remainder of the video.
     """
     total = duration_of(path)
     at = max(0.0, min(at, total))
@@ -480,35 +444,17 @@ def splice(path: Path, at: float, clip: Path, dest: Path, *, is_video: bool) -> 
     if not is_video:
         return _splice_audio(path, at, clip, dest, total=total)
 
+    # Never ask for a frame at (or past) the final timestamp.
     _, _, fps = video_params(path)
-    extra = duration_of(clip)
-
-    # A window of roughly 3x the inserted audio keeps the slow-down gentle
-    # (~75% speed for a one-word insert) without dragging on.
-    window = max(0.0, min(config.INSERT_SLOWDOWN_WINDOW * extra,
-                          config.INSERT_SLOWDOWN_MAX,
-                          total - at))
+    middle = _held_frame_clip(path, min(at, max(total - 1.0 / fps, 0.0)),
+                              clip, dest.parent / f"{stem}-mid.mp4")
 
     parts: list[Path] = []
     if at > 0.05:
         parts.append(cut(path, 0.0, at, dest.parent / f"{stem}-a.mp4", is_video=True))
-
-    if config.INSERT_MOTION and window >= config.INSERT_SLOWDOWN_MIN and extra > 0.01:
-        log.info("insert: slowing %.2fs of video to %.2fs (%.0f%% speed)",
-                 window, window + extra, 100.0 * window / (window + extra))
-        parts.append(_slowed_clip(path, at, window, clip,
-                                  dest.parent / f"{stem}-mid.mp4"))
-        tail_from = at + window
-    else:
-        # Not enough footage left to stretch — hold a frame instead.
-        log.info("insert: holding a frame for %.2fs (no room to slow down)", extra)
-        parts.append(_held_frame_clip(path, min(at, max(total - 1.0 / fps, 0.0)),
-                                      clip, dest.parent / f"{stem}-mid.mp4"))
-        tail_from = at
-
-    if total - tail_from > 0.05:
-        parts.append(cut(path, tail_from, total,
-                         dest.parent / f"{stem}-b.mp4", is_video=True))
+    parts.append(middle)
+    if total - at > 0.05:
+        parts.append(cut(path, at, total, dest.parent / f"{stem}-b.mp4", is_video=True))
 
     return concat(parts, dest, is_video=True)
 

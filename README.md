@@ -49,13 +49,13 @@ no rule was ever written for *introduces herself*.
 
 | You say | The agent plans |
 |---|---|
-| "Trim the part where it tells the credit card number" | `find → trim` |
-| "Dub the audio in Hindi" | `dub` *(transcription skipped entirely)* |
-| "Trim the credit card part and dub it in Hindi" | `find → trim → dub` |
-| "Remove background noise from this audio" | `denoise` |
-| "Remove noise from the part where he says 'I am a moster'" | `denoise → find → trim` |
-| "After he says Amazon, insert the word 'Sarvam'" | `insert` |
-| "Insert 'Sarvam' after Amazon, then trim the company list" | `insert → find → trim` |
+| "Trim the part where it tells the credit card number" | find → trim |
+| "Dub the audio in Hindi" | dub (transcription skipped entirely) |
+| "Trim the credit card part and dub it in Hindi" | find → trim → dub |
+| "Remove background noise from this audio" | denoise |
+| "Remove the noise from the part where he says 'I am a moster'" | denoise → find → trim |
+| "After he says Amazon, insert the word 'Sarvam'" | insert |
+| "Insert 'Sarvam' after Amazon, then trim the company list" | insert → find → trim |
 
 Ops compose freely. The agent decides the chain — you never pick from a menu.
 
@@ -64,43 +64,13 @@ Bulbul TTS and splices them in beside an anchor phrase you name. On video, a win
 picture is gently slowed across the insertion point (rather than freezing a frame, which
 reads as a glitch) so everything after it stays in sync.
 
+`insert` is the one op that *adds* rather than removes: it speaks the new words
+with Bulbul and splices them in next to an anchor you name. On video the frame
+at the insertion point is held for exactly the length of the new audio, so
+everything after it stays in sync with the picture.
+
 **Input:** YouTube link · direct audio/video URL · uploaded file
-**Output:** trimmed / denoised / dubbed / augmented MP4 or MP3, plus an SRT when dubbing
-
----
-
-## 🖥️ Three surfaces, one engine
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-### 🌐 Web editor
-React + Vite + Tailwind. Waveform timeline with draggable match regions, click-to-seek
-transcript, a live agent panel that streams every stage over SSE, match cards showing
-range / reason / confidence, one-click export.
-
-</td>
-<td width="33%" valign="top">
-
-### 💬 Telegram bot
-Send a link and a sentence. It edits a single status message as it works, then sends the
-finished file back with the reason it chose that segment.
-
-</td>
-<td width="33%" valign="top">
-
-### ⌨️ CLI
-The fast dev loop. Prints the plan, a per-stage timing breakdown, and every match with
-its confidence — so "why is it slow?" gets answered with numbers.
-
-</td>
-</tr>
-</table>
-
-All three are thin adapters over the same `pipeline.run()` generator. The web app's op
-checklist is **data-driven from the engine's progress stream**, so a new operation shows
-up in the UI with zero front-end changes.
+**Output:** trimmed / denoised / dubbed / augmented MP4 or MP3, plus an SRT when dubbing.
 
 ---
 
@@ -313,23 +283,16 @@ buffers its events for both the SSE and polling endpoints.
 
 ## ⚙️ Configuration
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SARVAM_API_KEY` | — | **Required.** All five Sarvam APIs. |
-| `TELEGRAM_BOT_TOKEN` | — | Required only for the bot. |
-| `CLIPIT_DUB_ENGINE` | `auto` | `auto` (Sarvam Dub, falls back to TTS) · `sarvam` (fail loudly) · `manual` (local, ~10x faster, no cloning) |
-| `CLIPIT_STT_MODEL` | `saaras:v3` | or `saaras:v4` |
-| `CLIPIT_REASONING_EFFORT` | `low` | LLM latency vs depth |
-| `CLIPIT_TTS_SPEAKER` | `shubh` | Bulbul voice for `insert` and the local dub path |
-| `CLIPIT_INSERT_MOTION` | `1` | `0` freezes a frame at the insert point instead of slowing a window |
-| `CLIPIT_RUN_BOT` | `1` | `0` disables the bot inside the container |
-
-Web (`web/.env`):
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `VITE_BACKEND_ORIGIN` | `http://localhost:8000` | Where `server.py` runs |
-| `VITE_USE_FIXTURES` | `0` | `1` runs the whole UI offline on static fixtures |
+1. **`denoise` is hoisted before transcription** when the plan also needs `find` —
+   cleaner audio transcribes better, and one filter pass serves both.
+2. **Transcription is skipped entirely** for whole-file dubs; Sarvam Dub
+   transcribes internally.
+3. **Trim always happens before dub** — dub cost and latency scale with output
+   length.
+4. **`insert` is hoisted ahead of everything** so it runs against the media the
+   transcript actually describes. Later ops are re-timed through
+   `_shift_for_inserts`, and segments the insertion lands inside are split at
+   that point so a following dub doesn't talk over the new words.
 
 ---
 
@@ -369,14 +332,16 @@ save you a day.
 - **`sarvam-translate:v1` accepts `mode="formal"` only**, and rejects
   `source_language_code="auto"` — pass a real code.
 - **TTS takes `language_code`**, not `target_language_code`.
-- **The `speaker` enum in `sarvamai` 0.1.30 is the bulbul:v2 list.** `abhilash`, `karun`,
-  `hitesh`, `anushka`, `manisha`, `vidya` and `arya` are legal values of the SDK type and
-  a hard 400 against `bulbul:v3` — while v3 serves voices the enum omits entirely
-  (`niharika`). `config.resolve_speaker()` gates every TTS call.
+- **The `speaker` enum in `sarvamai` 0.1.30 is the bulbul:v2 list.** `abhilash`,
+  `karun`, `hitesh`, `anushka`, `manisha`, `vidya` and `arya` are legal values
+  of the SDK type and a hard 400 against `bulbul:v3`; v3 also serves voices the
+  enum omits (`niharika`). `config.resolve_speaker()` gates every TTS call.
 - **There is no standalone voice-cloning API.** Cloning exists only as
-  `dubbing.create(voice_cloning=True)` over a whole file — `voice_id` is the *preset*
-  used when cloning is **off**, not a handle to a voice you cloned. That's why `insert`
-  speaks in a preset Bulbul voice rather than the original speaker's.
+  `dubbing.create(voice_cloning=True)` over a whole file — `voice_id` is the
+  *preset* used when cloning is off, not a handle to a voice you cloned. So
+  `insert` speaks in a preset Bulbul voice, not the original speaker's.
+- **`loudnorm` outputs at 192 kHz** unless you pin `-ar`, which quietly makes
+  intermediate WAVs 4x larger than expected.
 - **Odia is `or-IN` in the Dubbing API and `od-IN` everywhere else.** Assamese is
   dubbable but not TTS-able. Four APIs, four language sets — all mapped in `config.py`.
 - **Dubbing exports finish *after* the job reports 100%** — keep polling `export-status`
