@@ -1,0 +1,26 @@
+# Secrets — must never bake into an image layer. The container gets its keys
+# from Render's env vars instead; config.py's load_dotenv() is then a no-op.
+.env
+web/.env
+web/.env.local
+
+# Build outputs we regenerate inside the image
+web/node_modules
+web/dist
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+
+# Local scratch — `work/` alone is ~100 job directories of rendered media
+work
+out
+cache
+myvideos
+.git
+.claude
+
+# Docs and demo stills; nothing at runtime reads them
+*.md
+!requirements.txt
+*.png

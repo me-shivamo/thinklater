@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ClipIt Telegram bot.
+"""ClipCraft Telegram bot.
 
 Send a link (or a file) with an instruction; get the edited media back.
 
@@ -23,7 +23,7 @@ from pathlib import Path
 
 from telegram import Update
 from telegram.constants import ChatAction, ParseMode
-from telegram.error import BadRequest, RetryAfter
+from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -53,7 +53,7 @@ EXAMPLES = [
 ]
 
 WELCOME = (
-    "🎬 <b>ClipIt</b> — natural-language media editor\n\n"
+    "🎬 <b>ClipCraft</b> — natural-language media editor\n\n"
     "Send me a <b>link</b> (YouTube or a direct audio/video URL) or a "
     "<b>file</b>, together with what you want done.\n\n"
     "<b>Try:</b>\n"
@@ -90,7 +90,7 @@ class Status:
         self.lines.append((event.stage, event.status, event.message))
 
     def render(self) -> str:
-        out = ["🎬 <b>ClipIt</b>"]
+        out = ["🎬 <b>ClipCraft</b>"]
         for _, status, message in self.lines:
             icon = self.ICONS.get(status, "•")
             text = html.escape(message or "")
@@ -114,6 +114,68 @@ async def _edit(message, text: str) -> None:
     except BadRequest as exc:
         if "not modified" not in str(exc).lower():
             log.debug("edit failed: %s", exc)
+    except TelegramError as exc:
+        # Status text is disposable; a flaky network must never kill the job.
+        log.debug("edit dropped: %s", exc)
+
+
+async def _safe_reply(message, text: str, **kwargs) -> bool:
+    """Reply, swallowing transport errors. Returns whether it landed."""
+    for attempt in range(3):
+        try:
+            await message.reply_text(text, **kwargs)
+            return True
+        except RetryAfter as exc:
+            await asyncio.sleep(float(exc.retry_after) + 0.5)
+        except TelegramError as exc:
+            log.warning("reply attempt %d failed: %s", attempt + 1, exc)
+            await asyncio.sleep(2 * (attempt + 1))
+    return False
+
+
+async def _upload_result(update: Update, path: Path, caption: str | None,
+                         *, is_video: bool) -> bool:
+    """Upload the finished media, retrying and then degrading to a document.
+
+    Telegram uploads are the least reliable step in the whole pipeline — on a
+    weak connection a few-MB video times out where every small API call
+    succeeds. Retry with growing timeouts, then fall back to sending it as a
+    plain document, which is far more forgiving than send_video.
+    """
+    timeouts = [(180, 90), (420, 180), (900, 300)]  # (write, read) seconds
+
+    for attempt, (write_t, read_t) in enumerate(timeouts, start=1):
+        try:
+            with open(path, "rb") as fh:
+                common = dict(caption=caption, parse_mode=ParseMode.HTML,
+                              write_timeout=write_t, read_timeout=read_t,
+                              connect_timeout=60, pool_timeout=60)
+                if is_video:
+                    await update.message.reply_video(fh, supports_streaming=True,
+                                                     **common)
+                else:
+                    await update.message.reply_audio(fh, title="ClipCraft result",
+                                                     **common)
+            return True
+        except RetryAfter as exc:
+            await asyncio.sleep(float(exc.retry_after) + 1)
+        except TelegramError as exc:
+            log.warning("upload attempt %d/%d failed (%s): %s",
+                        attempt, len(timeouts), type(exc).__name__, exc)
+            await asyncio.sleep(3 * attempt)
+
+    # Last resort: documents skip Telegram's media transcoding entirely.
+    log.warning("falling back to document upload for %s", path.name)
+    try:
+        with open(path, "rb") as fh:
+            await update.message.reply_document(
+                fh, filename=path.name, caption=caption,
+                parse_mode=ParseMode.HTML,
+                write_timeout=900, read_timeout=300, connect_timeout=60)
+        return True
+    except TelegramError as exc:
+        log.error("document fallback also failed: %s", exc)
+        return False
 
 
 # --------------------------------------------------------------------------
@@ -181,7 +243,7 @@ async def _process(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     await ctx.bot.send_chat_action(chat.id, ChatAction.TYPING)
 
     status = Status()
-    message = await update.message.reply_text("🎬 <b>ClipIt</b>\n⏳ <i>Starting…</i>",
+    message = await update.message.reply_text("🎬 <b>ClipCraft</b>\n⏳ <i>Starting…</i>",
                                               parse_mode=ParseMode.HTML)
 
     queue: asyncio.Queue = asyncio.Queue()
@@ -230,23 +292,33 @@ async def _process(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         caption_bits.append(f"🎙 Dubbed{voice}")
     caption = "\n".join(caption_bits)[:1000] or None
 
-    await ctx.bot.send_chat_action(chat.id, ChatAction.UPLOAD_VIDEO
-                                   if result.kind.value == "video"
-                                   else ChatAction.UPLOAD_VOICE)
-    with open(output, "rb") as fh:
-        if result.kind.value == "video":
-            await update.message.reply_video(fh, caption=caption,
-                                             parse_mode=ParseMode.HTML,
-                                             supports_streaming=True)
-        else:
-            await update.message.reply_audio(fh, caption=caption,
-                                             parse_mode=ParseMode.HTML,
-                                             title="ClipIt result")
+    try:
+        await ctx.bot.send_chat_action(chat.id, ChatAction.UPLOAD_VIDEO
+                                       if result.kind.value == "video"
+                                       else ChatAction.UPLOAD_VOICE)
+    except TelegramError:
+        pass  # cosmetic only — never let it block the actual upload
+
+    sent = await _upload_result(update, output, caption,
+                                is_video=result.kind.value == "video")
+    if not sent:
+        await _safe_reply(
+            update.message,
+            "I finished the edit, but Telegram kept timing out on the upload "
+            f"(the network here is dropping connections). The file is on the "
+            f"server at:\n<code>{html.escape(str(output))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     if result.srt and Path(result.srt).exists():
-        with open(result.srt, "rb") as fh:
-            await update.message.reply_document(fh, filename="subtitles.srt",
-                                                caption="Subtitles")
+        try:
+            with open(result.srt, "rb") as fh:
+                await update.message.reply_document(
+                    fh, filename="subtitles.srt", caption="Subtitles",
+                    read_timeout=120, write_timeout=300, connect_timeout=60)
+        except TelegramError as exc:
+            log.warning("subtitle upload failed: %s", exc)
 
     for note in result.notes:
         await update.message.reply_text(note)
@@ -312,10 +384,21 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     log.exception("handler error", exc_info=ctx.error)
-    if isinstance(update, Update) and update.effective_message:
-        await update.effective_message.reply_text(
-            f"Something went wrong: {type(ctx.error).__name__}. Try again?"
-        )
+    if not (isinstance(update, Update) and update.effective_message):
+        return
+
+    error = ctx.error
+    if isinstance(error, (TimedOut, NetworkError)):
+        text = ("Telegram timed out while we were talking to each other — "
+                "usually the network here. Your edit may still have finished; "
+                "try sending the same message again.")
+    else:
+        text = f"Something went wrong: {type(error).__name__}. Try again?"
+
+    # The reply itself can fail on the same bad network that caused the error.
+    # Swallowing that is the whole point — an exception escaping the error
+    # handler is what silently killed the previous run.
+    await _safe_reply(update.effective_message, text)
 
 
 def main() -> None:
@@ -339,7 +422,7 @@ def main() -> None:
     ))
     app.add_error_handler(on_error)
 
-    log.info("ClipIt bot is up. Talk to it on Telegram.")
+    log.info("ClipCraft bot is up. Talk to it on Telegram.")
     app.run_polling(drop_pending_updates=True)
 
 

@@ -1,0 +1,13 @@
+{"stage": "transcribe", "status": "done", "message": "3 segments, detected hi-IN", "pct": 20}
+{"stage": "plan", "status": "running", "message": "Planning: find \u2192 trim \u2192 dub \u2192 export", "pct": 25}
+{"stage": "plan", "status": "done", "message": "Plan ready: find \u2192 trim \u2192 dub \u2192 export", "pct": 30}
+{"stage": "find", "status": "running", "message": "Locating the requested part\u2026", "pct": 40}
+{"stage": "find", "status": "done", "message": "Found 1 match (0:00\u20130:03)", "pct": 50}
+{"stage": "trim", "status": "running", "message": "Cutting the clip\u2026", "pct": 58}
+{"stage": "trim", "status": "done", "message": "Clip trimmed (2.4s)", "pct": 64}
+{"stage": "dub", "status": "running", "message": "Dubbing to Hindi (voice cloning)\u2026 translating", "pct": 74}
+{"stage": "dub", "status": "running", "message": "Dubbing to Hindi (voice cloning)\u2026 synthesizing", "pct": 86}
+{"stage": "dub", "status": "done", "message": "Hindi dub ready", "pct": 94}
+{"stage": "export", "status": "running", "message": "Rendering final video + SRT\u2026", "pct": 98}
+{"stage": "export", "status": "done", "message": "Export complete", "pct": 100}
+{"stage": "result", "status": "done", "message": "Done", "pct": 100}

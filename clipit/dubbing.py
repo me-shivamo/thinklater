@@ -192,6 +192,16 @@ def dub_with_sarvam(path: Path, target: str, workdir: Path, *,
         elif kind == "srt" and result.srt is None:
             result.srt = _download(url, workdir / "dub.srt")
 
+    # Sarvam does not reliably return a video export even when one is requested
+    # — often only audio + srt come back. Without this, media_path falls through
+    # to the audio and a dubbed *video* silently exports as a bare .wav. Mux the
+    # dubbed track onto the original picture instead, which is exactly what
+    # dub_manual already does for its own output.
+    if is_video and result.video is None and result.audio is not None:
+        say("No video export returned; muxing the dubbed track onto the source")
+        result.video = media.replace_audio(path, result.audio,
+                                           workdir / "dub_video.mp4")
+
     if result.media_path is None:
         raise DubbingError("dubbing job completed but produced no downloadable media")
     return result

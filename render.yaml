@@ -1,0 +1,50 @@
+# Render blueprint — one Docker web service running all three surfaces:
+# the React editor (web/dist, served at /), the FastAPI engine (/api/*), and
+# the Telegram bot (a background process inside the same container).
+#
+# The bot rides along rather than getting its own service because Render's
+# Background Workers are a paid product; deploy/start.sh supervises it.
+#
+# NOTE: this file is only read when you create a *Blueprint* on Render. A
+# service created through the dashboard or the REST API ignores it. Don't do
+# both or you'll end up with two services deploying the same repo.
+
+services:
+  - type: web
+    name: clipit
+    runtime: docker
+    plan: free
+    region: singapore          # closest to Sarvam's India endpoints
+    branch: feat/web-on-master
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+
+    envVars:
+      # Secrets — sync:false means Render prompts for the value and never
+      # stores it in the repo.
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+
+      # "auto" = Sarvam Dub, real voice cloning, 2-5 min server-side. That wait
+      # is Sarvam's, not ours, so it costs this 0.1-CPU instance almost nothing
+      # — whereas "manual" does translate + TTS + atempo locally and would be
+      # slower here than it is on a laptop. server.py's SSE keepalive holds the
+      # connection open through the wait.
+      - key: CLIPIT_DUB_ENGINE
+        value: auto
+
+      # `vijay` reads tighter than the `shubh` default on single-word inserts.
+      - key: CLIPIT_TTS_SPEAKER
+        value: vijay
+
+      # Set to 0 if you'd rather keep running bot.py on your laptop — Telegram
+      # allows only one poller per token and the two will fight otherwise.
+      - key: CLIPIT_RUN_BOT
+        value: "1"
+
+      - key: PYTHONUNBUFFERED
+        value: "1"

@@ -96,6 +96,16 @@ DUB_ENGINE = os.getenv("CLIPIT_DUB_ENGINE", "auto")
 ATEMPO_MAX = 1.6              # beyond this the manual dub sounds like a chipmunk
 DEFAULT_PADDING = 0.4
 
+# Inserting words makes the video longer. Rather than freezing a frame (which
+# reads as a glitch), stretch a window of picture around the insertion point so
+# it keeps moving. The window is a multiple of the inserted audio's length:
+# ~3x gives roughly 75% speed for a one-word insert — visible as a gentle
+# slow-motion beat, not as a stutter.
+INSERT_MOTION = os.getenv("CLIPIT_INSERT_MOTION", "1") not in ("0", "false", "no")
+INSERT_SLOWDOWN_WINDOW = 3.0  # window = this x inserted duration
+INSERT_SLOWDOWN_MIN = 0.35    # below this, slowing looks worse than a freeze
+INSERT_SLOWDOWN_MAX = 4.0     # never stretch more than this many seconds
+
 # --------------------------------------------------------------------------
 # ffmpeg discovery — prefer system, fall back to the pip-installed static build
 # --------------------------------------------------------------------------

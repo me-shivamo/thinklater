@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ClipIt CLI — the development loop and the demo fallback.
+"""ClipCraft CLI — the development loop and the demo fallback.
 
     python cli.py -i <url|path> -q "trim the part about India and dub it in Hindi"
     python cli.py -i sample.mp3 --probe
@@ -60,7 +60,7 @@ def main() -> int:
         print(f"{RED}SARVAM_API_KEY is not set. Add it to .env.{RESET}")
         return 1
 
-    print(f"{BOLD}🎬 ClipIt{RESET}")
+    print(f"{BOLD}🎬 ClipCraft{RESET}")
     print(f"{DIM}   {args.query}{RESET}\n")
 
     import time

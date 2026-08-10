@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Callable
+from uuid import uuid4
 
 from . import config, media, sarvam
 
@@ -177,10 +179,18 @@ def transcribe(
     cache_file = config.CACHE_DIR / f"{digest}-{config.STT_MODEL.replace(':', '_')}.json"
 
     if use_cache and cache_file.exists():
-        log.info("transcript cache hit: %s", cache_file.name)
-        if on_progress:
-            on_progress("Using cached transcript")
-        return Transcript.from_dict(json.loads(cache_file.read_text()))
+        # A torn or truncated entry is not worth failing the job over — the bot
+        # and the web server share this directory, so a reader can arrive while
+        # a writer is mid-flight. Fall through and transcribe again instead.
+        try:
+            cached = Transcript.from_dict(json.loads(cache_file.read_text()))
+        except (json.JSONDecodeError, OSError, KeyError, TypeError) as exc:
+            log.warning("ignoring unreadable transcript cache %s: %s", cache_file.name, exc)
+        else:
+            log.info("transcript cache hit: %s", cache_file.name)
+            if on_progress:
+                on_progress("Using cached transcript")
+            return cached
 
     workdir = media.new_workdir("stt")
     wav = media.extract_audio(path, workdir / "audio.wav")
@@ -208,7 +218,15 @@ def transcribe(
     segments, language = _stitch(results)
     transcript = Transcript(language=language, duration=duration, segments=segments)
 
-    cache_file.write_text(json.dumps(transcript.to_dict(), ensure_ascii=False, indent=2))
+    # Write-then-rename: os.replace is atomic on POSIX, so a concurrent reader
+    # sees either the previous entry or the complete new one, never a partial.
+    tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}-{uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(json.dumps(transcript.to_dict(), ensure_ascii=False, indent=2))
+        os.replace(tmp, cache_file)
+    except OSError as exc:
+        log.warning("could not write transcript cache %s: %s", cache_file.name, exc)
+        tmp.unlink(missing_ok=True)
     log.info("transcribed: %d segments, language=%s", len(segments), language)
     if on_progress:
         on_progress(f"{len(segments)} segments, detected {config.language_label(language)}")
