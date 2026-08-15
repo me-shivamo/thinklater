@@ -232,23 +232,7 @@ deployment, or [DEPLOY.md](DEPLOY.md) for Render.
 ## 🎛️ In the editor
 
 The agent is the headline, but the timeline is still there when you want to be exact.
-Two clearly separated surfaces: **AI Agent** takes a sentence, **Manual edit** takes
-timestamps.
-
-### Manual edit — say the time, get the edit
-
-Type into the command bar; it applies instantly.
-
-| Command | What happens |
-|---|---|
-| `zoom in at 1:20` | 1.5x punch-in over a 3s window at 1:20 |
-| `zoom in 1:05-1:12 1.8x` | Explicit range and zoom factor |
-| `zoom out 2:00 to 2:10` | Starts zoomed, returns to 1x across the range |
-| `cut 0:30 - 0:45` | Removes that range from the timeline |
-
-Times parse as `H:MM:SS`, `M:SS`, or bare seconds (`90`, `90.5`, `90s`). Zooms preview
-live on the player as you play; cuts feed the edit-decision list. Nothing is rendered
-until you export — then `POST /api/edit` bakes both with ffmpeg.
+Describe the edit in the **AI Agent** input, or make it yourself on the timeline.
 
 ### Timeline controls
 
@@ -260,8 +244,15 @@ until you export — then `POST /api/edit` bakes both with ffmpeg.
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 
 Timeline zoom keeps the time under your cursor pinned, so zooming in on a moment doesn't
-scroll it off-screen. It's a *view* control — distinct from the punch-in zoom above,
-which is a real effect that gets rendered into the output.
+scroll it off-screen. It's purely a *view* control — it changes what you see, never the
+output.
+
+Edits are held as an edit-decision list over the original timeline, so nothing is
+re-encoded while you work. Export renders the kept ranges in one ffmpeg pass.
+
+> **Punch-in zoom** — scaling the picture over a time window — is implemented end to end
+> (`clipcraft.media.zoom`, and the `effects` field on `POST /api/edit`) but has no UI
+> control at the moment, so it's reachable only through the API.
 
 ---
 

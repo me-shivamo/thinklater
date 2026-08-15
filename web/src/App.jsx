@@ -14,10 +14,9 @@ import {
 } from './api.js'
 import { formatTime, synthPeaks } from './utils/format.js'
 import { isKept, mapToOutputTime, nextKeptTime } from './utils/edl.js'
-import { parseCommand, zoomScaleAt } from './utils/commands.js'
+import { zoomScaleAt } from './utils/commands.js'
 import { useEDL } from './hooks/useEDL.js'
 import TopBar from './components/TopBar.jsx'
-import CommandBar from './components/CommandBar.jsx'
 import VideoPlayer from './components/VideoPlayer.jsx'
 import Timeline from './components/Timeline.jsx'
 import TranscriptPanel from './components/TranscriptPanel.jsx'
@@ -381,49 +380,6 @@ export default function App() {
     [mediaId, segments, timelineDuration],
   )
 
-  // Timestamp + instruction command: cuts feed the EDL, zooms become live
-  // preview effects. Returns an error string on failure (shown inline), or
-  // null on success so the CommandBar can clear its input.
-  const handleCommand = useCallback(
-    (text) => {
-      const res = parseCommand(text, { currentTime, duration: timelineDuration })
-      if (!res.ok) return res.error
-
-      if (res.action === 'cut') {
-        edl.deleteRange(res.start, res.end)
-        seek(res.start)
-        setToast({
-          text: `Cut ${formatTime(res.start)}–${formatTime(res.end)} — render to export the trim.`,
-          kind: 'info',
-        })
-        return null
-      }
-
-      // zoom
-      setEffects((prev) => [
-        ...prev,
-        {
-          id: `fx_${Date.now().toString(36)}`,
-          type: res.type,
-          start: res.start,
-          end: res.end,
-          scale: res.scale,
-        },
-      ])
-      seek(res.start)
-      setToast({
-        text: `${res.label} ${res.scale.toFixed(1)}x from ${formatTime(res.start)} to ${formatTime(res.end)} — press play to preview.`,
-        kind: 'info',
-      })
-      return null
-    },
-    [currentTime, timelineDuration, edl, seek],
-  )
-
-  const removeEffect = useCallback((id) => {
-    setEffects((prev) => prev.filter((fx) => fx.id !== id))
-  }, [])
-
   // Live zoom for the player: the strongest active effect at the playhead.
   const zoomScale = useMemo(
     () => zoomScaleAt(effects, currentTime),
@@ -488,16 +444,6 @@ export default function App() {
             />
           </div>
         </div>
-      </div>
-
-      {/* Timestamp + instruction command bar */}
-      <div className="px-3 pb-2">
-        <CommandBar
-          onCommand={handleCommand}
-          disabled={!mediaId}
-          effects={effects}
-          onRemoveEffect={removeEffect}
-        />
       </div>
 
       {/* Timeline */}
