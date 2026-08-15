@@ -16,8 +16,10 @@ export default function VideoPlayer({
   preview = 'source',
   onPreviewChange,
   hasResult = false,
+  zoomScale = 1,
 }) {
   const [failed, setFailed] = useState(false)
+  const zoomed = zoomScale > 1.001
 
   useEffect(() => {
     setFailed(false)
@@ -31,10 +33,21 @@ export default function VideoPlayer({
           ref={videoRef}
           src={src || undefined}
           className="h-full w-full object-contain"
+          style={{
+            transform: `scale(${zoomScale})`,
+            transformOrigin: 'center center',
+            transition: 'transform 120ms linear',
+          }}
           onError={() => src && setFailed(true)}
           controls
           playsInline
         />
+
+        {zoomed && (
+          <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-indigo-400/40 bg-indigo-500/20 px-2.5 py-1 text-xs font-medium text-indigo-100 backdrop-blur-sm">
+            {zoomScale.toFixed(2)}x
+          </div>
+        )}
 
         {failed && (
           <div className="absolute inset-0 grid place-items-center bg-zinc-950/80 p-6 text-center">

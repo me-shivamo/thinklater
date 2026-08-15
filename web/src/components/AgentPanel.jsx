@@ -20,6 +20,12 @@ const STAGE_LABELS = {
   result: 'Finish',
 }
 
+const EXAMPLES = [
+  'Trim the part where he talks about India and dub it in Hindi',
+  'Remove background noise from this audio',
+  'Dub the video to Hindi and send it back',
+]
+
 const titleCase = (s) =>
   s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/[_-]/g, ' ') : s
 
@@ -58,11 +64,27 @@ function StatusIcon({ status }) {
 }
 
 /**
- * Renders the agent's progress as a live checklist. Driven entirely by the
- * ProgressEvent stream — the checklist is data-driven, not hard-coded.
+ * The single AI-agent surface: a natural-language instruction input plus a live
+ * checklist of the agent's progress. This is the one conversational entry point
+ * — typing here turns a sentence into an edit plan (find → trim → dub → export)
+ * on the backend. The checklist is data-driven from the ProgressEvent stream.
  */
-export default function AgentPanel({ events = [], reasoning, running, notes = [] }) {
+export default function AgentPanel({
+  events = [],
+  reasoning,
+  running,
+  notes = [],
+  onRun,
+  disabled,
+}) {
   const [showReasoning, setShowReasoning] = useState(false)
+  const [text, setText] = useState('')
+
+  const submit = (value) => {
+    const instruction = (value ?? text).trim()
+    if (!instruction || disabled || running) return
+    onRun?.(instruction)
+  }
 
   // Collapse the event stream into one row per stage, in first-seen order.
   const steps = useMemo(() => {
@@ -90,19 +112,89 @@ export default function AgentPanel({ events = [], reasoning, running, notes = []
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-          Agent
-        </span>
-        {running && (
-          <span className="text-[11px] text-indigo-300/80">{pct}%</span>
+      <div className="flex items-start justify-between gap-2 border-b border-zinc-800 px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-indigo-500/15 text-indigo-400">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 1l1.3 3.2L12.5 5l-2.4 2.1.7 3.4L8 8.9 5.2 10.5l.7-3.4L3.5 5l3.2-.8L8 1zM3 11l.6 1.6L5 13l-1.4.6L3 15l-.6-1.4L1 13l1.4-.4L3 11zM13 10l.5 1.3 1.5.5-1.5.5-.5 1.3-.5-1.3-1.5-.5 1.5-.5.5-1.3z" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-zinc-100">
+                AI Agent
+              </span>
+              {running && (
+                <span className="text-[11px] text-indigo-300/80">{pct}%</span>
+              )}
+            </div>
+            <p className="text-[11px] leading-tight text-zinc-500">
+              Natural language edits — find a spoken part, trim, dub, denoise.
+              {' '}Needs the backend.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-b border-zinc-800 px-3 py-2.5">
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={disabled || running}
+            placeholder='Ask: "trim where he talks about India, in Hindi"'
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={disabled || running || !text.trim()}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {running ? (
+              <>
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Running
+              </>
+            ) : (
+              'Ask'
+            )}
+          </button>
+        </form>
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {EXAMPLES.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              disabled={disabled || running}
+              onClick={() => {
+                setText(ex)
+                submit(ex)
+              }}
+              className="rounded-full border border-zinc-700/70 bg-zinc-800/40 px-2.5 py-0.5 text-[11px] text-zinc-400 transition hover:border-indigo-500/50 hover:text-zinc-200 disabled:opacity-40"
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+
+        {disabled && (
+          <p className="mt-2 text-[11px] text-zinc-600">
+            Load media with a transcript to use the agent.
+          </p>
         )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {steps.length === 0 && (
           <p className="py-6 text-center text-sm text-zinc-600">
-            Type an instruction above and the agent's plan will tick off here.
+            Type an instruction and the agent's plan will tick off here.
           </p>
         )}
 

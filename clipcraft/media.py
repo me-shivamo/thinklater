@@ -127,6 +127,63 @@ def duration_of(path: Path) -> float:
         return 0.0
 
 
+def _stream_codec(path: Path, kind: str) -> str:
+    """codec_name of the first ``kind`` (``v``/``a``) stream, or ``""`` if none."""
+    out = run([config.FFPROBE, "-v", "error", "-select_streams", f"{kind}:0",
+               "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(path)])
+    return out.strip()
+
+
+BROWSER_VIDEO = {"h264"}
+BROWSER_AUDIO = {"aac", "mp3"}
+
+
+def _make_browser_playable(path: Path) -> Path:
+    """Guarantee a downloaded link resolves to an H.264/AAC MP4 with faststart.
+
+    A browser <video> can only preview what it can decode. Link ingestion can
+    otherwise yield AV1/VP9 (in mp4 or webm) — which most browsers refuse,
+    silently: the network request succeeds so no error placeholder shows, but
+    ``loadedmetadata`` never fires, leaving a black frame, a 0:00 duration and
+    an empty filmstrip. We also relocate the moov atom to the front so the file
+    plays progressively over HTTP Range. Cheap remux when codecs already match;
+    transcode only when they don't.
+    """
+    try:
+        vcodec = _stream_codec(path, "v")
+        acodec = _stream_codec(path, "a")
+    except MediaError:
+        return path  # let probe() surface a clean error downstream
+
+    is_mp4 = path.suffix.lower() in {".mp4", ".m4v", ".mov"}
+    already_ok = is_mp4 and (not vcodec or vcodec in BROWSER_VIDEO) \
+        and (not acodec or acodec in BROWSER_AUDIO)
+
+    safe = path.with_name("playback.mp4")
+    args: list[object] = ["-i", path]
+    if already_ok:
+        # Codecs are fine; only the container layout might need fixing.
+        args += ["-c", "copy", "-movflags", "+faststart"]
+    else:
+        args += ["-c:v", "copy"] if vcodec in BROWSER_VIDEO else [
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-pix_fmt", "yuv420p",
+        ]
+        if acodec:
+            args += ["-c:a", "copy"] if acodec in BROWSER_AUDIO else [
+                "-c:a", "aac", "-b:a", "128k",
+            ]
+        args += ["-movflags", "+faststart"]
+
+    try:
+        ffmpeg(*args, "-loglevel", "error", safe)
+    except MediaError:
+        if already_ok:
+            return path  # remux failed but the original is already playable
+        raise
+    return safe
+
+
 # --------------------------------------------------------------------------
 # Ingest
 # --------------------------------------------------------------------------
@@ -154,9 +211,21 @@ def _download_direct(url: str, dest_dir: Path) -> Path:
 def _download_ytdlp(url: str, dest_dir: Path) -> Path:
     import yt_dlp
 
+    # Pin the video stream to H.264 (avc1) + AAC (m4a) in an mp4 container.
+    # ``[ext=mp4]`` alone is NOT enough: YouTube also serves AV1 (av01) *inside*
+    # mp4, and yt-dlp ranks av01 above avc1 by default — so the old string would
+    # merge an AV1 video that browsers can't decode (<video> then never fires
+    # loadedmetadata: black preview, 0:00 duration, empty filmstrip). The
+    # ``vcodec^=avc1`` filter forces the browser-friendly codec.
     opts = {
-        "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]/b",
+        "format": (
+            "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
+            "b[ext=mp4][vcodec^=avc1]/b[ext=mp4]/b"
+        ),
         "merge_output_format": "mp4",
+        # Put the moov atom at the front so the file is progressively playable
+        # over HTTP Range (a merged mp4 otherwise keeps moov at the end).
+        "postprocessor_args": {"merger+ffmpeg": ["-movflags", "+faststart"]},
         "outtmpl": str(dest_dir / "source.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
@@ -203,6 +272,10 @@ def ingest(source: str | Path, workdir: Path) -> MediaInfo:
                 raise MediaError(f"Could not download that link ({exc}).") from exc
         else:
             path = _download_ytdlp(url, workdir)
+        # Remote sources can be AV1/VP9/webm; normalize to a browser-playable
+        # H.264/AAC mp4 (faststart) so the <video> preview + filmstrip work.
+        # Local files / uploads are trusted as-is and skip this step.
+        path = _make_browser_playable(path)
 
     info = probe(path)
     if info.duration > config.MAX_INPUT_SECONDS:
@@ -305,6 +378,52 @@ def cut(path: Path, start: float, end: float, dest: Path, *, is_video: bool) -> 
     else:
         args += ["-vn", "-c:a", "libmp3lame", "-q:a", "2"]
     ffmpeg(*args, "-loglevel", "error", dest)
+    return dest
+
+
+def zoom(path: Path, windows: list[tuple[float, float, float]], dest: Path) -> Path:
+    """Bake a centered punch-in (zoom) over one or more time windows.
+
+    ``windows`` is a list of ``(start, end, scale)`` in the file's own timeline.
+    Each window scales the frame up by ``scale`` and crops the centre back to the
+    original size, overlaid only between ``start`` and ``end`` so the rest of the
+    clip is untouched. Audio is passed through. Video only.
+    """
+    clean: list[tuple[float, float, float]] = []
+    for start, end, scale in windows:
+        s = max(0.0, float(start))
+        e = max(0.0, float(end))
+        z = float(scale)
+        if e - s > 0.05 and z > 1.001:
+            clean.append((s, e, round(z, 4)))
+    if not clean:
+        import shutil as _sh
+
+        _sh.copy(path, dest)
+        return dest
+
+    steps: list[str] = []
+    cur = "0:v"
+    for i, (s, e, z) in enumerate(clean):
+        b, zlab, zc, out = f"b{i}", f"z{i}", f"zc{i}", f"v{i}"
+        steps.append(f"[{cur}]split=2[{b}][{zlab}]")
+        steps.append(f"[{zlab}]scale=iw*{z}:ih*{z},crop=iw/{z}:ih/{z}[{zc}]")
+        # Commas inside between() must be escaped so ffmpeg doesn't read them as
+        # filtergraph separators.
+        steps.append(
+            f"[{b}][{zc}]overlay=enable='between(t\\,{s:.3f}\\,{e:.3f})'[{out}]"
+        )
+        cur = out
+
+    graph = ";".join(steps)
+    ffmpeg(
+        "-i", path,
+        "-filter_complex", graph,
+        "-map", f"[{cur}]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart", "-loglevel", "error", dest,
+    )
     return dest
 
 

@@ -12,6 +12,18 @@ export default function IngestOverlay({ onIngest, busy, error }) {
 
   const pickFile = (file) => file && onIngest({ file })
 
+  // Live mode: upload the bundled sample as a real file so the backend gets a
+  // genuine media_id and the ffmpeg render/export path works end-to-end.
+  const loadSample = async () => {
+    try {
+      const blob = await (await fetch('/sample.mp4')).blob()
+      const file = new File([blob], 'sample.mp4', { type: 'video/mp4' })
+      onIngest({ file })
+    } catch {
+      onIngest({}) // fall back to the fixtures path if the asset is missing
+    }
+  }
+
   return (
     <div className="grid h-full place-items-center p-6">
       <div className="w-full max-w-md">
@@ -90,16 +102,14 @@ export default function IngestOverlay({ onIngest, busy, error }) {
           </button>
         </form>
 
-        {USE_FIXTURES && (
-          <button
-            type="button"
-            onClick={() => onIngest({})}
-            disabled={busy}
-            className="mt-4 w-full rounded-lg border border-zinc-700 py-2.5 text-sm text-zinc-300 transition hover:border-indigo-500/50 hover:text-zinc-100 disabled:opacity-40"
-          >
-            {busy ? 'Loading…' : 'Load sample (demo)'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={USE_FIXTURES ? () => onIngest({}) : loadSample}
+          disabled={busy}
+          className="mt-4 w-full rounded-lg border border-zinc-700 py-2.5 text-sm text-zinc-300 transition hover:border-indigo-500/50 hover:text-zinc-100 disabled:opacity-40"
+        >
+          {busy ? 'Loading…' : USE_FIXTURES ? 'Load sample (demo)' : 'Load sample'}
+        </button>
 
         {error && (
           <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">

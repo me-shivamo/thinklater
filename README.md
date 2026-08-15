@@ -16,7 +16,7 @@ dubs it into an Indian language — and tells you *why* it picked that segment.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 
-[Quick start](#-quick-start) · [How it works](#-how-it-works) · [API](#-http-api) · [Contributing](#-contributing) · [Field notes](#-field-notes-things-the-docs-dont-tell-you)
+[Quick start](#-quick-start) · [In the editor](#️-in-the-editor) · [How it works](#-how-it-works) · [API](#-http-api) · [Contributing](#-contributing) · [Field notes](#-field-notes-things-the-docs-dont-tell-you)
 
 </div>
 
@@ -124,26 +124,72 @@ python cli.py -v -i "<url>" -q "..."
 
 </details>
 
-<details>
-<summary><b>🌐 Web editor</b> — two processes</summary>
+<details open>
+<summary><b>🌐 Web editor</b> — backend + frontend, two terminals</summary>
+
+**Terminal 1 — the backend** (FastAPI engine on `:8000`)
 
 ```bash
-# Terminal 1 — the engine
-uvicorn server:app --reload --port 8000
-
-# Terminal 2 — the UI
-cd web
-cp .env.example .env        # VITE_USE_FIXTURES=0 talks to the live engine
-npm install
-npm run dev                 # http://localhost:5173
+cd thinklater                       # the repo root
+source .venv/bin/activate           # Windows: .venv\Scripts\activate
+python -m uvicorn server:app --reload --port 8000
 ```
 
-The Vite dev server proxies `/api` to `VITE_BACKEND_ORIGIN`, so the browser only ever
-talks to one origin — which is what makes SSE and HTTP Range work without CORS config.
+Wait for `Application startup complete.`, then check it:
+`curl http://localhost:8000/api/health` → `{"ok":true,...}`
+
+> `python -m uvicorn` rather than the bare `uvicorn` on purpose: it runs whatever
+> interpreter is active instead of trusting a console script's hardcoded shebang, so it
+> keeps working if the venv or the repo folder is ever moved or renamed. Plain
+> `uvicorn server:app --reload --port 8000` is fine too when the venv is healthy.
+
+**Terminal 2 — the frontend** (Vite dev server on `:5173`)
+
+```bash
+cd thinklater/web                   # from the repo root
+cp .env.example .env                # VITE_USE_FIXTURES=0 talks to the live engine
+npm install                         # first run only
+npm run dev
+```
+
+Then open **http://localhost:5173**. Leave both running — the UI needs the engine.
+
+The Vite dev server proxies `/api` to `VITE_BACKEND_ORIGIN` (default
+`http://localhost:8000`), so the browser only ever talks to one origin — which is what
+makes SSE and HTTP Range work without any CORS config. Start the backend **first**, or
+the first few `/api` calls fail until it's up.
+
+**One process instead of two?** Build the UI and let FastAPI serve it — the same thing
+the container does. No Vite, no `:5173`:
+
+```bash
+cd web && npm install && npm run build && cd ..
+python -m uvicorn server:app --port 8000   # UI + API together on http://localhost:8000
+```
+
+`server.py` mounts `web/dist` at `/` beneath every `/api` route. Use this to sanity-check
+a production build; use the two-terminal setup for day-to-day work, since only Vite gives
+you hot reload.
+
+**Stop either one** with `Ctrl-C`, or:
+
+```bash
+pkill -f "uvicorn server:app"       # backend
+pkill -f vite                       # frontend
+```
 
 > 💡 Set `VITE_USE_FIXTURES=1` to run the **entire UI offline** against
 > `src/fixtures/*.json` — no backend, no API spend. Ideal for front-end work.
 > A "Demo mode" badge appears in the header whenever it's on.
+> Vite inlines this at **build** time, so `npm run build` bakes in whatever is set.
+
+| Symptom | Fix |
+|---|---|
+| `.venv/bin/uvicorn: cannot execute: required file not found` | The venv was built at a different path — every console script's shebang still points there. Use `python -m uvicorn ...`, or rebuild: `rm -rf .venv && python -m venv .venv && pip install -r requirements.txt` |
+| `ECONNREFUSED` / `/api` 500s in the browser | Backend isn't up — check Terminal 1 |
+| Port 8000 or 5173 already in use | `uvicorn ... --port 8001` (then set `VITE_BACKEND_ORIGIN` to match), or `pkill -f vite` |
+| UI loads but says "Demo mode" | `VITE_USE_FIXTURES=1` in `web/.env` — set it to `0` and restart Vite |
+| Blank page after `npm run build` | You're on `:5173` with no dev server; either run `npm run dev` or open `:8000` |
 
 </details>
 
@@ -186,6 +232,33 @@ backend ship as one service on one origin. See [RAILWAY.md](RAILWAY.md) for Rail
 deployment, or [DEPLOY.md](DEPLOY.md) for Render.
 
 </details>
+
+---
+
+## 🎛️ In the editor
+
+The agent is the headline, but the timeline is still there when you want to be exact.
+Describe the edit in the **AI Agent** input, or make it yourself on the timeline.
+
+### Timeline controls
+
+| Action | How |
+|---|---|
+| Zoom the timeline | `+` / `−` / `Fit` buttons, `+`/`-` keys, or **Ctrl/Cmd + scroll** |
+| Select a range | Drag across the timeline |
+| Trim / delete / split | Toolbar, or `Del` and `S` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
+
+Timeline zoom keeps the time under your cursor pinned, so zooming in on a moment doesn't
+scroll it off-screen. It's purely a *view* control — it changes what you see, never the
+output.
+
+Edits are held as an edit-decision list over the original timeline, so nothing is
+re-encoded while you work. Export renders the kept ranges in one ffmpeg pass.
+
+> **Punch-in zoom** — scaling the picture over a time window — is implemented end to end
+> (`clipcraft.media.zoom`, and the `effects` field on `POST /api/edit`) but has no UI
+> control at the moment, so it's reachable only through the API.
 
 ---
 
@@ -261,6 +334,7 @@ POST /api/ingest             {url} | multipart file   -> {job_id, media_id}
 GET  /api/media/{media_id}   bytes (HTTP Range / 206) -> <video> source
 GET  /api/transcript/{id}    -> {language, duration, segments:[...]}
 POST /api/instruct           {media_id, instruction}  -> {job_id}
+POST /api/edit               {media_id, keep_ranges, effects} -> {job_id}
 GET  /api/events/{job_id}    -> SSE stream of ProgressEvent
 GET  /api/result/{job_id}    -> {clips, output_url, srt_url, plan}
 GET  /api/download/{job_id}  -> final file (HTTP Range / 206)
@@ -275,10 +349,16 @@ Segment       { id, start, end, text }
 ProgressEvent { stage, status, message, pct }
 Clip          { start, end, reason, confidence, segment_ids }
 Plan          { reasoning, ops[], unsupported_language }
+Effect        { start, end, scale }              // zoom window, scale > 1
 ```
 
 The pipeline is a blocking generator, so `/api/instruct` runs it on a worker thread and
 buffers its events for both the SSE and polling endpoints.
+
+`/api/edit` is the manual counterpart: `keep_ranges` are the kept `[start, end]` pairs
+over the original timeline, `effects` are zoom windows over the *trimmed* output. It's
+pure ffmpeg — cut, concat, then bake the zooms — so it needs no Sarvam key and returns
+a `job_id` you download like any other.
 
 ---
 

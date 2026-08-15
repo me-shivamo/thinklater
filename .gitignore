@@ -7,3 +7,17 @@ node_modules/
 web/dist/
 out/
 cache/*.json
+
+# Python
+venv/
+# Secrets / env
+**/.env
+!*.env.example
+# Node / web build
+web/node_modules/
+dist/
+# Engine runtime artifacts
+media/
+job*/
+*.wav
+*.log
