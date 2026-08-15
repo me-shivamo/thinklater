@@ -22,7 +22,7 @@ import requests
 
 from . import config
 
-log = logging.getLogger("clipit.media")
+log = logging.getLogger("clipcraft.media")
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".flv", ".wmv", ".m4v", ".mpeg", ".mpg"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".aiff", ".amr", ".wma"}

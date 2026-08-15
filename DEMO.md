@@ -1,4 +1,4 @@
-# 🎬 ClipIt — Mentor Demo Script
+# 🎬 ClipCraft — Mentor Demo Script
 
 Bot: **@clip_craft_sarvam_bot**
 
@@ -70,7 +70,7 @@ renders.
 **If you can't afford the wait,** switch to the fast local dub (~24s, but no
 voice cloning):
 ```bash
-echo 'CLIPIT_DUB_ENGINE=manual' >> .env    # then restart bot.py
+echo 'CLIPCRAFT_DUB_ENGINE=manual' >> .env    # then restart bot.py
 ```
 
 ---
@@ -130,7 +130,7 @@ and labelled as estimated in the API.
 
 ---
 
-## Original test matrix (from the ElevenLabs ClipIt reference) — verified
+## Original test matrix (from the ElevenLabs ClipCraft reference) — verified
 
 | # | Instruction | Source | Status |
 |---|---|---|---|

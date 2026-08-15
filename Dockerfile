@@ -1,12 +1,12 @@
-# ClipIt — one image, both surfaces.
+# ClipCraft — one image, both surfaces.
 #
 # server.py already mounts web/dist at "/" below every /api route, so a single
 # container serves the React editor and the FastAPI engine from one origin.
-# That is what makes SSE and HTTP Range work on Render with no CORS config and
-# no second service: the browser only ever talks to itself.
+# That is what makes SSE and HTTP Range work on Railway/Render with no CORS
+# config and no second service: the browser only ever talks to itself.
 #
 # deploy/start.sh then runs the Telegram bot alongside uvicorn in this same
-# container, so all three surfaces cost one free web service.
+# container, so all three surfaces cost one web service.
 
 # ── Stage 1: build the React bundle ─────────────────────────────────────────
 FROM node:22-slim AS web
@@ -45,7 +45,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-COPY clipit/ ./clipit/
+COPY clipcraft/ ./clipcraft/
 COPY assets/ ./assets/
 COPY server.py bot.py cli.py ./
 COPY deploy/start.sh ./deploy/start.sh
@@ -55,7 +55,7 @@ RUN chmod +x ./deploy/start.sh
 COPY --from=web /web/dist ./web/dist
 
 # config.py creates work/ and cache/ at import, but do it here too so the
-# layout is correct even if something reads them before clipit is imported.
+# layout is correct even if something reads them before clipcraft is imported.
 RUN mkdir -p work cache out
 
 EXPOSE 8000

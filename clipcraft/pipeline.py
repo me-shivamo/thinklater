@@ -26,7 +26,7 @@ from .agent import Clip, Plan, Point, locate_clips, locate_insert_point, make_pl
 from .media import MediaError, MediaInfo, MediaKind
 from .transcribe import Segment, Transcript, transcribe
 
-log = logging.getLogger("clipit.pipeline")
+log = logging.getLogger("clipcraft.pipeline")
 
 
 @dataclass
@@ -388,7 +388,7 @@ def run(source: str | Path, instruction: str, *,
                     current = media.concat(pieces, dest, is_video=is_video)
 
                 suffix = current.suffix or (".mp4" if is_video else ".mp3")
-                final = workdir / f"clipit_output{suffix}"
+                final = workdir / f"clipcraft_output{suffix}"
                 if current.resolve() != final.resolve():
                     shutil.copy(current, final)
                 result.output = final

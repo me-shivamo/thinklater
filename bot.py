@@ -32,15 +32,15 @@ from telegram.ext import (
     filters,
 )
 
-from clipit import config, media
-from clipit.pipeline import Event, Result, run
+from clipcraft import config, media
+from clipcraft.pipeline import Event, Result, run
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
-log = logging.getLogger("clipit.bot")
+log = logging.getLogger("clipcraft.bot")
 
 URL_RE = re.compile(r"https?://\S+")
 EDIT_INTERVAL = 1.6  # seconds between status edits

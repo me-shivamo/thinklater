@@ -11,9 +11,9 @@ import argparse
 import logging
 import sys
 
-from clipit import config
-from clipit.media import MediaError, new_workdir
-from clipit.pipeline import run
+from clipcraft import config
+from clipcraft.media import MediaError, new_workdir
+from clipcraft.pipeline import run
 
 BOLD, DIM, GREEN, RED, YELLOW, RESET = (
     "\033[1m", "\033[2m", "\033[32m", "\033[31m", "\033[33m", "\033[0m"
@@ -21,7 +21,7 @@ BOLD, DIM, GREEN, RED, YELLOW, RESET = (
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="clipit", description=__doc__,
+    parser = argparse.ArgumentParser(prog="clipcraft", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-i", "--input", required=True, help="file path or URL")
     parser.add_argument("-q", "--query", "--instruction", dest="query",
@@ -42,7 +42,7 @@ def main() -> int:
     )
 
     if args.probe:
-        from clipit import media
+        from clipcraft import media
 
         try:
             info = media.ingest(args.input, new_workdir("probe"))

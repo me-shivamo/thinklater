@@ -11,7 +11,7 @@
 
 services:
   - type: web
-    name: clipit
+    name: clipcraft
     runtime: docker
     plan: free
     region: singapore          # closest to Sarvam's India endpoints
@@ -34,16 +34,16 @@ services:
       # — whereas "manual" does translate + TTS + atempo locally and would be
       # slower here than it is on a laptop. server.py's SSE keepalive holds the
       # connection open through the wait.
-      - key: CLIPIT_DUB_ENGINE
+      - key: CLIPCRAFT_DUB_ENGINE
         value: auto
 
       # `vijay` reads tighter than the `shubh` default on single-word inserts.
-      - key: CLIPIT_TTS_SPEAKER
+      - key: CLIPCRAFT_TTS_SPEAKER
         value: vijay
 
       # Set to 0 if you'd rather keep running bot.py on your laptop — Telegram
       # allows only one poller per token and the two will fight otherwise.
-      - key: CLIPIT_RUN_BOT
+      - key: CLIPCRAFT_RUN_BOT
         value: "1"
 
       - key: PYTHONUNBUFFERED

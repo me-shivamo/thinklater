@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from . import config, media, sarvam
 
-log = logging.getLogger("clipit.transcribe")
+log = logging.getLogger("clipcraft.transcribe")
 
 
 @dataclass

@@ -1,4 +1,4 @@
-# ClipIt — web editor design prompt
+# ClipCraft — web editor design prompt
 
 Paste the block below into Claude Code (in this repo) to generate the screen design.
 Output is a single self-contained HTML mock, published as an Artifact.
@@ -6,7 +6,7 @@ Person B then ports it to React components under `web/src/`.
 
 ---
 
-Design the primary screen for **ClipIt**, a natural-language video editor. Load the
+Design the primary screen for **ClipCraft**, a natural-language video editor. Load the
 `artifact-design` skill first, then build a single self-contained HTML page at
 `web/design/editor-mock.html` and publish it as an Artifact.
 
@@ -28,7 +28,7 @@ it. That distinction is the whole point. Judges see this on a projector for 3 mi
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ClipIt                    sample.mp4 · 1:47 · en-IN        │
+│  ClipCraft                    sample.mp4 · 1:47 · en-IN        │
 ├──────────────────────────────────┬──────────────────────────┤
 │                                  │  TRANSCRIPT              │
 │                                  │  ▸ 00:12 So when I...    │ ← click = seek
@@ -85,7 +85,7 @@ the waveform are the two things a judge's eye should land on first.
 
 ## Chat behaviour — the most important part of this design
 
-ClipIt has a second surface: a Telegram bot running the same engine. The web chat
+ClipCraft has a second surface: a Telegram bot running the same engine. The web chat
 should feel like the same product. Design it as a **conversation that builds
 sequentially** — messages arriving one after another as the pipeline runs, never a
 single panel that mutates in place.
