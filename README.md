@@ -132,11 +132,16 @@ python cli.py -v -i "<url>" -q "..."
 ```bash
 cd thinklater                       # the repo root
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
-uvicorn server:app --reload --port 8000
+python -m uvicorn server:app --reload --port 8000
 ```
 
 Wait for `Application startup complete.`, then check it:
 `curl http://localhost:8000/api/health` → `{"ok":true,...}`
+
+> `python -m uvicorn` rather than the bare `uvicorn` on purpose: it runs whatever
+> interpreter is active instead of trusting a console script's hardcoded shebang, so it
+> keeps working if the venv or the repo folder is ever moved or renamed. Plain
+> `uvicorn server:app --reload --port 8000` is fine too when the venv is healthy.
 
 **Terminal 2 — the frontend** (Vite dev server on `:5173`)
 
@@ -159,7 +164,7 @@ the container does. No Vite, no `:5173`:
 
 ```bash
 cd web && npm install && npm run build && cd ..
-uvicorn server:app --port 8000      # UI + API together on http://localhost:8000
+python -m uvicorn server:app --port 8000   # UI + API together on http://localhost:8000
 ```
 
 `server.py` mounts `web/dist` at `/` beneath every `/api` route. Use this to sanity-check
@@ -180,6 +185,7 @@ pkill -f vite                       # frontend
 
 | Symptom | Fix |
 |---|---|
+| `.venv/bin/uvicorn: cannot execute: required file not found` | The venv was built at a different path — every console script's shebang still points there. Use `python -m uvicorn ...`, or rebuild: `rm -rf .venv && python -m venv .venv && pip install -r requirements.txt` |
 | `ECONNREFUSED` / `/api` 500s in the browser | Backend isn't up — check Terminal 1 |
 | Port 8000 or 5173 already in use | `uvicorn ... --port 8001` (then set `VITE_BACKEND_ORIGIN` to match), or `pkill -f vite` |
 | UI loads but says "Demo mode" | `VITE_USE_FIXTURES=1` in `web/.env` — set it to `0` and restart Vite |
