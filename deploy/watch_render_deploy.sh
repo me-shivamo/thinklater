@@ -54,10 +54,10 @@ echo
 echo "Smoke test:"
 # A free instance may still be waking; give the health check a few tries.
 for i in 1 2 3 4 5 6; do
-    code=$(curl -s -o /tmp/clipit_health.$$ -w '%{http_code}' --max-time 60 "$BASE/api/health" || echo 000)
+    code=$(curl -s -o /tmp/clipcraft_health.$$ -w '%{http_code}' --max-time 60 "$BASE/api/health" || echo 000)
     if [ "$code" = "200" ]; then
-        echo "  /api/health  200  $(cat /tmp/clipit_health.$$)"
-        rm -f /tmp/clipit_health.$$
+        echo "  /api/health  200  $(cat /tmp/clipcraft_health.$$)"
+        rm -f /tmp/clipcraft_health.$$
         break
     fi
     echo "  /api/health  $code (attempt $i, instance may be cold)"

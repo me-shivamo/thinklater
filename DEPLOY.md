@@ -1,4 +1,8 @@
-# 🚀 Deploying ClipIt to Render
+# 🚀 Deploying ClipCraft to Render
+
+> Deploying to **Railway** instead? Same container, different config file —
+> see [RAILWAY.md](RAILWAY.md). Pick one; running both just deploys the same
+> repo twice.
 
 One Docker web service runs all three surfaces:
 
@@ -54,9 +58,9 @@ deploying the same repo.
 |---|---|---|
 | `SARVAM_API_KEY` | *(secret)* | Required. All five Sarvam APIs. |
 | `TELEGRAM_BOT_TOKEN` | *(secret)* | Required only for the bot; the web service runs fine without it. |
-| `CLIPIT_DUB_ENGINE` | `auto` | Sarvam Dub. The 2–5 min wait is Sarvam's, not this instance's — `manual` does translate + TTS + atempo *locally* and is the slower choice on 0.1 CPU. |
-| `CLIPIT_TTS_SPEAKER` | `vijay` | Tighter than `shubh` on single-word inserts. |
-| `CLIPIT_RUN_BOT` | `1` | Set `0` to keep the bot local — see the conflict note below. |
+| `CLIPCRAFT_DUB_ENGINE` | `auto` | Sarvam Dub. The 2–5 min wait is Sarvam's, not this instance's — `manual` does translate + TTS + atempo *locally* and is the slower choice on 0.1 CPU. |
+| `CLIPCRAFT_TTS_SPEAKER` | `vijay` | Tighter than `shubh` on single-word inserts. |
+| `CLIPCRAFT_RUN_BOT` | `1` | Set `0` to keep the bot local — see the conflict note below. |
 
 ---
 
@@ -83,7 +87,7 @@ video is central to the demo, Starter ($7) removes the spin-down and Standard
 
 **One Telegram poller per token.** If the deployed bot and your laptop's
 `python bot.py` are both alive, they fight over `getUpdates` and one crash-loops.
-Either `pkill -f "python bot.py"` locally, or set `CLIPIT_RUN_BOT=0` on Render.
+Either `pkill -f "python bot.py"` locally, or set `CLIPCRAFT_RUN_BOT=0` on Render.
 
 ---
 

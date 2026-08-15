@@ -1,4 +1,4 @@
-# ClipIt — Submission Copy
+# ClipCraft — Submission Copy
 
 ## Tagline
 
@@ -9,7 +9,7 @@
 ## Short version (~90 words — for character-limited fields)
 
 Video editing still forces creators to think in timestamps: scrub, find the
-moment, mark in, mark out, repeat. ClipIt removes that step entirely. You
+moment, mark in, mark out, repeat. ClipCraft removes that step entirely. You
 describe the scene in plain language — *"trim the part where he talks about
 India and dub it in Hindi"* — and the agent locates the moment, cuts it,
 cleans it, dubs it into an Indian language, and tells you **why** it chose that
@@ -32,7 +32,7 @@ a separate tool, a separate workflow, and usually a separate voice.
 
 ### What we built
 
-ClipIt is a natural-language video editing agent. You give it a YouTube link, a
+ClipCraft is a natural-language video editing agent. You give it a YouTube link, a
 media URL, or a file, and one sentence describing what you want. It plans the
 edit, performs it, and hands back a finished MP4 or MP3 — plus subtitles when
 it dubs, and a written reason for every cut it made.
@@ -112,6 +112,6 @@ the Sarvam Dub job is ~93% of wall time.
 ### Why it matters
 
 A creator who wants a 10-second clip in four Indian languages currently opens
-three tools and spends an afternoon. With ClipIt it is one sentence, and the
+three tools and spends an afternoon. With ClipCraft it is one sentence, and the
 dubbed voice is still recognisably theirs. The timestamp was never the point —
 it was just the price of admission. We removed it.

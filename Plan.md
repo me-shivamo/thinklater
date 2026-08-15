@@ -1,4 +1,4 @@
-# ClipIt — Natural-Language Video Editor Agent
+# ClipCraft — Natural-Language Video Editor Agent
 
 > **Sarvam × HackCulture Hackathon, Bangalore**
 > Team of 2. This document is the single source of truth.
@@ -62,7 +62,7 @@ job = client.dubbing.create(
     register="auto",           # formal | common-indic | classic-colloquial
                                # | modern-colloquial | academic | auto
     disable_watermark=True,    # may need a paid plan — retry False on 4xx
-    job_name="clipit-<id>",
+    job_name="clipcraft-<id>",
 )
 # → job.data.job_id, job.data.upload_url
 ```
@@ -249,7 +249,7 @@ GET  /api/download/{job_id} → final file
 ## 6. Repo layout
 
 ```
-ClipIt/
+ClipCraft/
 ├── Plan.md                     ← this document
 ├── .env.example                # SARVAM_API_KEY, TELEGRAM_BOT_TOKEN
 ├── requirements.txt
@@ -259,7 +259,7 @@ ClipIt/
 ├── bot.py                      # Telegram bot                 ▸ A
 ├── smoke_test.py               # hour-0 API verification      ▸ A
 │
-├── clipit/                                                    ▸ A
+├── clipcraft/                                                    ▸ A
 │   ├── config.py               # models, per-API lang tables, paths
 │   ├── sarvam.py               # STT/chat/translate/TTS + retry
 │   ├── dubbing.py              # Sarvam Dub job lifecycle
@@ -290,14 +290,14 @@ ClipIt/
 └── cache/   transcript JSON by file hash        (COMMIT demo ones)
 ```
 
-**The file split is the merge-conflict strategy.** A never touches `web/`, B never touches `clipit/`. Only `Plan.md` and the API contract are shared, and those get frozen early. Work on `main`, push often, no branches needed.
+**The file split is the merge-conflict strategy.** A never touches `web/`, B never touches `clipcraft/`. Only `Plan.md` and the API contract are shared, and those get frozen early. Work on `main`, push often, no branches needed.
 
 ---
 
 ## 7. 👥 Work division
 
 ### 🅰️ You — Engine + Backend + Telegram
-> Owns: `clipit/`, `server.py`, `cli.py`, `bot.py`, `smoke_test.py`
+> Owns: `clipcraft/`, `server.py`, `cli.py`, `bot.py`, `smoke_test.py`
 > Never touches `web/`.
 
 | # | Task | Detail |
@@ -316,7 +316,7 @@ ClipIt/
 **Ordering note:** `server.py` ships *before* you polish the bot. She is blocked on the backend; nobody is blocked on Telegram. Get her unblocked first, then make your own surface nice.
 
 ### 🅱️ Teammate — Web Video Editor
-> Owns: `web/` entirely. Never touches `clipit/`.
+> Owns: `web/` entirely. Never touches `clipcraft/`.
 > Full spec in §10 — layout diagram, wavesurfer code, component notes, fallback ladder.
 
 | # | Task | Detail |
@@ -438,7 +438,7 @@ System prompt carries the op vocabulary + the 12 dubbable codes. Validate ops ag
 ### The layout
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  ClipIt   [ "trim where he talks about India, in Hindi" ] ▶ │
+│  ClipCraft   [ "trim where he talks about India, in Hindi" ] ▶ │
 ├──────────────────────────────────┬─────────────────────────┤
 │                                  │  TRANSCRIPT             │
 │                                  │  ▸ 00:12 So when I...   │
@@ -515,7 +515,7 @@ Token from **@BotFather** → `/newbot` → `.env`.
 
 **Live progress is your demo.** Post one status message and `edit_message_text` it as `ProgressEvent`s arrive:
 ```
-🎬 ClipIt
+🎬 ClipCraft
 ✅ Downloaded (0:38 audio)
 ✅ Transcribed — 14 segments, detected en-IN
 ✅ Plan: find → trim → dub

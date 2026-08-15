@@ -39,15 +39,15 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 # --------------------------------------------------------------------------
 # Models  (verified against sarvamai wheel 0.1.30 type enums)
 # --------------------------------------------------------------------------
-STT_MODEL = os.getenv("CLIPIT_STT_MODEL", "saaras:v3")  # saaras:v3 | saaras:v4
+STT_MODEL = os.getenv("CLIPCRAFT_STT_MODEL", "saaras:v3")  # saaras:v3 | saaras:v4
 STT_MODE = "transcribe"
 CHAT_MODEL = "sarvam-105b"          # the only value in SarvamModelIds
 # Planning and locating are extraction tasks, not reasoning ones — "low" roughly
 # halves LLM latency here with no measurable quality loss.
-CHAT_REASONING_EFFORT = os.getenv("CLIPIT_REASONING_EFFORT", "low")
+CHAT_REASONING_EFFORT = os.getenv("CLIPCRAFT_REASONING_EFFORT", "low")
 TRANSLATE_MODEL = "sarvam-translate:v1"
 TTS_MODEL = "bulbul:v3"
-TTS_SPEAKER = os.getenv("CLIPIT_TTS_SPEAKER", "shubh")
+TTS_SPEAKER = os.getenv("CLIPCRAFT_TTS_SPEAKER", "shubh")
 
 # The `speaker` enum in sarvamai 0.1.30 is the *bulbul:v2* list. Passing one of
 # the v2-only names (abhilash, karun, hitesh, anushka, manisha, vidya, arya) to
@@ -91,7 +91,7 @@ DUB_TIMEOUT_SECONDS = 600.0
 # "auto"   -> Sarvam Dub (voice cloning, ~2-5 min server-side job), TTS on failure
 # "manual" -> Translate + Bulbul TTS locally (~20s, no voice cloning)
 # "sarvam" -> Sarvam Dub only, fail loudly
-DUB_ENGINE = os.getenv("CLIPIT_DUB_ENGINE", "auto")
+DUB_ENGINE = os.getenv("CLIPCRAFT_DUB_ENGINE", "auto")
 
 ATEMPO_MAX = 1.6              # beyond this the manual dub sounds like a chipmunk
 DEFAULT_PADDING = 0.4
@@ -101,7 +101,7 @@ DEFAULT_PADDING = 0.4
 # it keeps moving. The window is a multiple of the inserted audio's length:
 # ~3x gives roughly 75% speed for a one-word insert — visible as a gentle
 # slow-motion beat, not as a stutter.
-INSERT_MOTION = os.getenv("CLIPIT_INSERT_MOTION", "1") not in ("0", "false", "no")
+INSERT_MOTION = os.getenv("CLIPCRAFT_INSERT_MOTION", "1") not in ("0", "false", "no")
 INSERT_SLOWDOWN_WINDOW = 3.0  # window = this x inserted duration
 INSERT_SLOWDOWN_MIN = 0.35    # below this, slowing looks worse than a freeze
 INSERT_SLOWDOWN_MAX = 4.0     # never stretch more than this many seconds
@@ -219,7 +219,7 @@ def resolve_speaker(name: str | None) -> str:
         return candidate
     import logging
 
-    logging.getLogger("clipit.config").warning(
+    logging.getLogger("clipcraft.config").warning(
         "speaker %r is not available on %s; using %r",
         candidate, TTS_MODEL, TTS_SPEAKER_FALLBACK,
     )

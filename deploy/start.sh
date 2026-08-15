@@ -3,8 +3,9 @@
 # Container entrypoint: the FastAPI engine in the foreground, the Telegram bot
 # beside it in the background.
 #
-# Render only health-checks the web port, so uvicorn is the process that must
-# own the foreground — if it dies the container dies and Render restarts it.
+# The platform (Railway, Render) only health-checks the web port, so uvicorn is
+# the process that must own the foreground — if it dies the container dies and
+# the platform restarts it.
 # The bot is deliberately *not* allowed that power: it is a polling client with
 # its own failure modes (network blips, a second poller holding the token), and
 # none of those should be able to take the editor down with it.
@@ -18,7 +19,7 @@ PORT="${PORT:-8000}"
 # ---------------------------------------------------------------------------
 # Telegram allows exactly ONE getUpdates poller per token. If you are also
 # running `python bot.py` on your laptop, the two will fight and this one will
-# crash-loop on 409 Conflict. Set CLIPIT_RUN_BOT=0 to keep the container's bot
+# crash-loop on 409 Conflict. Set CLIPCRAFT_RUN_BOT=0 to keep the container's bot
 # switched off and leave the token to your local process.
 run_bot() {
     local delay=5
@@ -39,8 +40,8 @@ run_bot() {
 # The two hard preconditions from bot.py's main(). Checking them here rather
 # than letting bot.py SystemExit keeps a misconfigured deploy from crash-looping
 # on something no amount of retrying will fix.
-if [ "${CLIPIT_RUN_BOT:-1}" = "0" ]; then
-    echo "[start.sh] CLIPIT_RUN_BOT=0 — Telegram bot disabled"
+if [ "${CLIPCRAFT_RUN_BOT:-1}" = "0" ]; then
+    echo "[start.sh] CLIPCRAFT_RUN_BOT=0 — Telegram bot disabled"
 elif [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
     echo "[start.sh] TELEGRAM_BOT_TOKEN not set — Telegram bot disabled"
 elif [ -z "${SARVAM_API_KEY:-}" ]; then

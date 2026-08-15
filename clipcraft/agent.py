@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from . import config, sarvam
 from .transcribe import Transcript
 
-log = logging.getLogger("clipit.agent")
+log = logging.getLogger("clipcraft.agent")
 
 KNOWN_OPS = ("find", "trim", "denoise", "translate", "insert", "dub", "concat", "export")
 
@@ -74,7 +74,7 @@ LOCATE_SCHEMA = {
     "required": ["clips"],
 }
 
-PLANNER_SYSTEM = f"""You are the planner for ClipIt, an audio/video editing agent.
+PLANNER_SYSTEM = f"""You are the planner for ClipCraft, an audio/video editing agent.
 Turn the user's instruction into an ordered list of operations.
 
 Available operations:

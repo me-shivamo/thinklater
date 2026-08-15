@@ -1,9 +1,9 @@
 {
-  "name": "clipit-web",
+  "name": "clipcraft-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "ClipIt web video editor (Person B). React + Vite + Tailwind + wavesurfer.js, talks to the Python FastAPI engine over the frozen REST + SSE contract.",
+  "description": "ClipCraft web video editor (Person B). React + Vite + Tailwind + wavesurfer.js, talks to the Python FastAPI engine over the frozen REST + SSE contract.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

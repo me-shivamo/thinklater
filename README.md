@@ -1,12 +1,12 @@
 <div align="center">
 
-# 🎬 ClipIt
+# 🎬 ClipCraft
 
 ### Edit audio and video by describing the scene. Never touch a timestamp.
 
 **"Trim the part where he talks about India and dub it in Hindi."**
 
-That sentence is the entire interface. ClipIt finds the moment, cuts it, cleans it,
+That sentence is the entire interface. ClipCraft finds the moment, cuts it, cleans it,
 dubs it into an Indian language — and tells you *why* it picked that segment.
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -31,7 +31,7 @@ you already remember perfectly well, and converting it into two numbers.
 The creative intent — *"the bit where she reads out her card number"* — was clear from
 the start. The timestamps were never the point. They were just the price of admission.
 
-ClipIt removes them. You describe the scene; the agent reads a timestamped transcript,
+ClipCraft removes them. You describe the scene; the agent reads a timestamped transcript,
 reasons about it, plans a chain of operations, and executes it. Nothing is
 keyword-matched: ask for *"the part where she introduces herself"* and it works, because
 no rule was ever written for *introduces herself*.
@@ -154,7 +154,7 @@ talks to one origin — which is what makes SSE and HTTP Range work without CORS
 python bot.py
 ```
 
-Wait for `ClipIt bot is up.`, then send it a link and an instruction **in one message**:
+Wait for `ClipCraft bot is up.`, then send it a link and an instruction **in one message**:
 
 ```
 https://media.w3.org/2010/05/sintel/trailer.mp4 remove background noise from this video
@@ -173,16 +173,17 @@ tail -f work/bot.log
 <summary><b>🐳 Docker</b> — all three surfaces in one container</summary>
 
 ```bash
-docker build -t clipit .
+docker build -t clipcraft .
 docker run -p 8000:8000 \
   -e SARVAM_API_KEY=sk_xxx \
   -e TELEGRAM_BOT_TOKEN=123456:ABC \
-  clipit
+  clipcraft
 ```
 
 Stage 1 builds the Vite bundle with Node 22; stage 2 is Python 3.12 + ffmpeg and copies
-`dist/` in. `server.py` mounts it at `/` beneath every `/api` route. See
-[DEPLOY.md](DEPLOY.md) for one-click Render deployment.
+`dist/` in. `server.py` mounts it at `/` beneath every `/api` route — frontend and
+backend ship as one service on one origin. See [RAILWAY.md](RAILWAY.md) for Railway
+deployment, or [DEPLOY.md](DEPLOY.md) for Render.
 
 </details>
 
@@ -234,7 +235,7 @@ flowchart TD
 ffmpeg does the cutting. Nothing else calls out.
 
 Language coverage differs across all four APIs — so every supported set is mapped
-explicitly in `clipit/config.py`, and unsupported requests fail with **the list of
+explicitly in `clipcraft/config.py`, and unsupported requests fail with **the list of
 languages that would have worked**, rather than silently.
 
 ### Measured
@@ -299,7 +300,7 @@ buffers its events for both the SSE and polling endpoints.
 ## 📁 Layout
 
 ```
-clipit/
+clipcraft/
 ├── config.py       model ids, per-API language tables, limits, ffmpeg discovery
 ├── sarvam.py       API wrappers, retry/backoff, JSON-schema chat
 ├── media.py        ingest (URL / yt-dlp / file), ffmpeg ops, silence chunking
@@ -312,7 +313,7 @@ server.py           FastAPI + SSE adapter, serves web/dist at /
 bot.py              Telegram bot
 cli.py              CLI
 web/                React 19 + Vite + Tailwind v4 + wavesurfer.js editor
-deploy/             Render entrypoint and service scripts
+deploy/             Container entrypoint and Railway/Render deploy scripts
 ```
 
 ---
@@ -324,7 +325,7 @@ save you a day.
 
 - **Sarvam returns exactly one timestamp span per STT request** — on both `saaras:v3`
   and `v4`. Chunk-level timestamps are *per request*, not per phrase, so **your chunk
-  size is your timestamp resolution**. ClipIt sizes chunks adaptively (2.5–15s) for
+  size is your timestamp resolution**. ClipCraft sizes chunks adaptively (2.5–15s) for
   precision rather than packing them to the 30s API ceiling.
 - **`chat.completions()` doesn't expose `response_format`** in `sarvamai` 0.1.30, even
   though the API supports it. Inject it via
@@ -387,8 +388,8 @@ shows up in the editor for free.**
 ### How to contribute
 
 1. **Fork** and create a branch: `git checkout -b feat/my-op`
-2. **Build something** — for a new op, add it to `KNOWN_OPS` in `clipit/agent.py`, teach
-   the planner schema about it, and implement it in `clipit/pipeline.py`
+2. **Build something** — for a new op, add it to `KNOWN_OPS` in `clipcraft/agent.py`, teach
+   the planner schema about it, and implement it in `clipcraft/pipeline.py`
 3. **Try it end to end:** `python cli.py -v -i <file> -q "<your instruction>"`
 4. **Open a PR** describing the instruction you can now say that you couldn't before
 
@@ -418,7 +419,7 @@ Stated up front, because finding these yourself is annoying:
 - **Sources are capped at 15 minutes** (`MAX_INPUT_SECONDS`) to keep cost and latency sane.
 - **Server job state is in-memory** — a restart loses ingested media and job results.
 - **Sarvam Dub takes 2–5 minutes.** That's the server-side job, not this code. Use
-  `CLIPIT_DUB_ENGINE=manual` when you'd rather have speed than voice cloning.
+  `CLIPCRAFT_DUB_ENGINE=manual` when you'd rather have speed than voice cloning.
 
 ---
 
@@ -426,7 +427,8 @@ Stated up front, because finding these yourself is annoying:
 
 | File | What's in it |
 |---|---|
-| [DEPLOY.md](DEPLOY.md) | Render deployment — one container, all three surfaces, and what bites you on the free tier |
+| [RAILWAY.md](RAILWAY.md) | Railway deployment — one container, frontend + backend + bot, and what bites you there |
+| [DEPLOY.md](DEPLOY.md) | Render deployment — the same container, and what bites you on the free tier |
 | [RUNTHIS.md](RUNTHIS.md) | A copy-paste runbook of verified demo instructions with expected timings |
 | [DEMO.md](DEMO.md) | Demo script and talking points |
 | [Plan.md](Plan.md) | The original design doc, including the frozen API contract |
@@ -444,7 +446,7 @@ Stated up front, because finding these yourself is annoying:
 
 **Built on [Sarvam AI](https://www.sarvam.ai/).**
 
-If ClipIt saved you a scrub through a timeline, ⭐ the repo — and tell us the sentence you
+If ClipCraft saved you a scrub through a timeline, ⭐ the repo — and tell us the sentence you
 wish it understood.
 
 </div>

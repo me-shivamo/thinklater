@@ -22,7 +22,7 @@ from sarvamai import SarvamAI
 
 from . import config
 
-log = logging.getLogger("clipit.sarvam")
+log = logging.getLogger("clipcraft.sarvam")
 
 T = TypeVar("T")
 

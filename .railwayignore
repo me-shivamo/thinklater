@@ -1,0 +1,27 @@
+# What `railway up` should not upload from this directory.
+#
+# Deliberately a SUBSET of .dockerignore: anything excluded here never reaches
+# the builder, so removing a path the Dockerfile COPYs would break the build.
+# Only local scratch and secrets are listed — the Dockerfile still filters the
+# rest out of the image itself.
+
+# Secrets. Railway gets its keys from service variables instead.
+.env
+web/.env
+web/.env.local
+
+# Regenerated inside the image
+web/node_modules
+web/dist
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+
+# Local scratch — `work/` alone can be ~100 job directories of rendered media
+work
+out
+cache
+myvideos
+.git
+.claude

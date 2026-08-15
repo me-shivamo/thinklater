@@ -1,6 +1,6 @@
 # ▶️ RUN THIS
 
-Everything you need to start thinklater and demo it. Copy-paste, top to bottom.
+Everything you need to start ClipCraft and demo it. Copy-paste, top to bottom.
 
 Bot: **@clip_craft_sarvam_bot**
 
@@ -14,7 +14,7 @@ source .venv/bin/activate
 python bot.py
 ```
 
-Wait for `thinklater bot is up. Talk to it on Telegram.` — then open Telegram.
+Wait for `ClipCraft bot is up. Talk to it on Telegram.` — then open Telegram.
 
 **Keep it running after you close the terminal:**
 ```bash
@@ -123,7 +123,7 @@ https://storage.googleapis.com/eleven-public-cdn/documentation_assets/audio/stt-
 
 > The inserted word is a **preset Bulbul voice**, not the speaker's — Sarvam has
 > no standalone cloning API. It reads as a deliberate edit, not a seamless one.
-> Pick the voice with `--speaker` (CLI) or `THINKLATER_TTS_SPEAKER` (bot); `vijay`
+> Pick the voice with `--speaker` (CLI) or `CLIPCRAFT_TTS_SPEAKER` (bot); `vijay`
 > is tighter than the `shubh` default for single words.
 
 **Sintel trailer** (English, 52s)
@@ -152,7 +152,7 @@ Sarvam Dub is a server-side job: **~285s**, but real speaker voice cloning.
 Local TTS is **~24s**, no cloning.
 
 ```bash
-echo 'THINKLATER_DUB_ENGINE=manual' >> .env
+echo 'CLIPCRAFT_DUB_ENGINE=manual' >> .env
 pkill -f "python bot.py" && setsid nohup .venv/bin/python bot.py > work/bot.log 2>&1 < /dev/null &
 ```
 
@@ -268,7 +268,7 @@ https://media.w3.org/2010/05/sintel/trailer.mp4 trim the part where he asks what
 https://media.w3.org/2010/05/sintel/trailer.mp4 remove background noise from this video
 
 
-REMOVE BACKGROUND NOISE FROM THIS VIDEO FROM THE PART WHERE HE SAYS 'I AM A MOSTER' USING THINKLATER
+REMOVE BACKGROUND NOISE FROM THIS VIDEO FROM THE PART WHERE HE SAYS 'I AM A MOSTER' USING CLIPCRAFT
 https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
 
 KNOWN_OPS = ("find", "trim", "denoise", "translate", "dub", "concat", "export")

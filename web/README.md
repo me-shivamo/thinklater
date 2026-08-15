@@ -1,12 +1,12 @@
-# ClipIt — Web Video Editor (`web/`, Person B)
+# ClipCraft — Web Video Editor (`web/`, Person B)
 
-The React front-end for ClipIt. It ingests a video (file or link), shows a
+The React front-end for ClipCraft. It ingests a video (file or link), shows a
 timestamped click-to-seek transcript, and drives a natural-language agent that
 trims, dubs, and edits — all rendered against the Python engine's REST + SSE
 contract.
 
 > Scope: this folder is **only** the web editor. The Python engine, FastAPI
-> `server.py`, all Sarvam/ffmpeg work, and the Telegram bot live in `clipit/`
+> `server.py`, all Sarvam/ffmpeg work, and the Telegram bot live in `clipcraft/`
 > and are owned by Person A. This app never calls Sarvam directly.
 
 ## Stack

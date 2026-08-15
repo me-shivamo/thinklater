@@ -25,7 +25,7 @@ import requests
 from . import config, media, sarvam
 from .transcribe import Segment
 
-log = logging.getLogger("clipit.dubbing")
+log = logging.getLogger("clipcraft.dubbing")
 
 Progress = Callable[[str], None]
 
@@ -63,7 +63,7 @@ def _create_job(client, source: str, target: str, want_video: bool,
         pace_preset="normal",
         register="auto",
         disable_watermark=disable_watermark,
-        job_name=f"clipit-{int(time.time())}",
+        job_name=f"clipcraft-{int(time.time())}",
     )
 
 

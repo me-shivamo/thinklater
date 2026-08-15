@@ -2,7 +2,7 @@
 
 This is the *only* backend surface the React web editor (``web/``) talks to. It
 implements the frozen §5 contract from ``Plan.md`` and does nothing more than
-adapt :mod:`clipit` <-> that contract:
+adapt :mod:`clipcraft` <-> that contract:
 
     POST /api/ingest             {url} | multipart file  -> {job_id, media_id}
     GET  /api/media/{media_id}   bytes (HTTP Range / 206) -> <video> source
@@ -14,7 +14,7 @@ adapt :mod:`clipit` <-> that contract:
     GET  /api/jobs/{job_id}      -> polling fallback {status, event}
 
 The engine is *not* reimplemented here; every endpoint calls into
-``clipit.pipeline`` / ``clipit.media`` / ``clipit.transcribe`` — the same
+``clipcraft.pipeline`` / ``clipcraft.media`` / ``clipcraft.transcribe`` — the same
 package the Telegram bot drives, so both surfaces stay in lockstep. The
 pipeline is a blocking generator, so ``/api/instruct`` runs it on a worker
 thread and buffers its events for the SSE and polling endpoints.
@@ -37,12 +37,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from clipit import config, media, pipeline
-from clipit.media import MediaError, MediaInfo
-from clipit.transcribe import transcribe
+from clipcraft import config, media, pipeline
+from clipcraft.media import MediaError, MediaInfo
+from clipcraft.transcribe import transcribe
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("clipit.server")
+log = logging.getLogger("clipcraft.server")
 
 app = FastAPI(title="ClipCraft backend", version="1.0")
 
@@ -81,7 +81,7 @@ class Job:
     instruction: str = ""
     events: list[dict] = field(default_factory=list)   # serialized SSE payloads
     status: str = "running"                             # running | done | error
-    result: Any = None                                  # clipit.pipeline.Result
+    result: Any = None                                  # clipcraft.pipeline.Result
     error: str | None = None                            # terminal error message
     done: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -157,7 +157,7 @@ def _run_pipeline(job: Job, source: str, instruction: str) -> None:
     """Worker thread: drive the blocking pipeline and buffer its events."""
     prev_pct = 0
     try:
-        # dub_engine mirrors bot.py so CLIPIT_DUB_ENGINE moves both surfaces
+        # dub_engine mirrors bot.py so CLIPCRAFT_DUB_ENGINE moves both surfaces
         # together — run()'s own default is the literal "auto", so omitting this
         # would silently ignore the env var on the web side only.
         for event in pipeline.run(source=source, instruction=instruction,

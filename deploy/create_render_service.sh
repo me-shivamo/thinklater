@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Create the ClipIt web service on Render via the REST API.
+# Create the ClipCraft web service on Render via the REST API.
 #
 # Idempotent-ish: if a service named $SERVICE_NAME already exists it prints it
 # and exits instead of creating a duplicate.
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVICE_NAME="${SERVICE_NAME:-clipit}"
+SERVICE_NAME="${SERVICE_NAME:-clipcraft}"
 REPO_URL="${REPO_URL:-https://github.com/me-shivamo/thinklater}"
 BRANCH="${BRANCH:-feat/web-on-master}"
 REGION="${REGION:-singapore}"
@@ -77,15 +77,15 @@ import json, os
 
 env = [
     {"key": "SARVAM_API_KEY",     "value": os.environ["SARVAM_API_KEY"]},
-    {"key": "CLIPIT_DUB_ENGINE",  "value": "auto"},
-    {"key": "CLIPIT_TTS_SPEAKER", "value": "vijay"},
+    {"key": "CLIPCRAFT_DUB_ENGINE",  "value": "auto"},
+    {"key": "CLIPCRAFT_TTS_SPEAKER", "value": "vijay"},
     {"key": "PYTHONUNBUFFERED",   "value": "1"},
 ]
 
 token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 env.append({"key": "TELEGRAM_BOT_TOKEN", "value": token})
 # No token -> start.sh skips the bot anyway, but be explicit about it.
-env.append({"key": "CLIPIT_RUN_BOT", "value": "1" if token else "0"})
+env.append({"key": "CLIPCRAFT_RUN_BOT", "value": "1" if token else "0"})
 
 print(json.dumps({
     "type": "web_service",
